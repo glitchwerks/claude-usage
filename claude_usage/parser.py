@@ -86,7 +86,7 @@ def _parse_jsonl_messages(jsonl_path: Path, agent_type: str) -> list[MessageReco
     return messages
 
 
-_AGENT_SETTING_SCAN_LINES = 5
+_AGENT_SETTING_SCAN_LINES = 10
 
 
 def _parse_session(jsonl_path: Path, project_name: str) -> SessionRecord | None:
@@ -102,7 +102,11 @@ def _parse_session(jsonl_path: Path, project_name: str) -> SessionRecord | None:
        ``<session_id>/subagents/`` directory exists (only the router spawns
        sub-agents, implying general-purpose), set ``root_agent`` to
        ``"general-purpose"``.
-    3. **Unknown preserved**: otherwise leave ``root_agent`` as ``"unknown"``.
+    3. **Main fallback**: plain top-level CLI sessions that have no
+       ``agent-setting`` record and no subagents directory default to
+       ``"main"`` rather than ``"unknown"``.
+    4. **Unknown preserved**: degenerate cases (empty file, all-malformed JSON,
+       file unreadable) retain ``"unknown"`` so they are not silently mislabelled.
     """
     session_id = jsonl_path.stem
 
@@ -110,7 +114,11 @@ def _parse_session(jsonl_path: Path, project_name: str) -> SessionRecord | None:
     subagent_dir = jsonl_path.parent / session_id / "subagents"
 
     # Branch 1: bounded scan for agent-setting in the first N lines.
+    # Track whether any parseable line was seen to distinguish a populated
+    # session (no agent-setting → "main") from an empty/degenerate one
+    # (no lines at all → "unknown").
     root_agent = "unknown"
+    saw_any_line = False
     with open(jsonl_path, "r", encoding="utf-8") as f:
         for _ in range(_AGENT_SETTING_SCAN_LINES):
             raw = f.readline()
@@ -119,6 +127,7 @@ def _parse_session(jsonl_path: Path, project_name: str) -> SessionRecord | None:
             line = raw.strip()
             if not line:
                 continue
+            saw_any_line = True
             try:
                 entry = json.loads(line)
             except json.JSONDecodeError:
@@ -130,6 +139,11 @@ def _parse_session(jsonl_path: Path, project_name: str) -> SessionRecord | None:
     # Branch 2: subagents-directory fallback when no agent-setting found.
     if root_agent == "unknown" and subagent_dir.is_dir():
         root_agent = "general-purpose"
+
+    # Branch 3: populated session with no agent-setting and no subagents/ dir
+    # → top-level main-thread CLI session.
+    if root_agent == "unknown" and saw_any_line:
+        root_agent = "main"
 
     # Parse parent session messages
     messages = _parse_jsonl_messages(jsonl_path, root_agent)
