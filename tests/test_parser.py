@@ -205,8 +205,8 @@ class TestAgentSettingResolution:
         assert session.root_agent == "general-purpose"
 
     def test_no_agent_setting_no_subagents_dir(self, tmp_path: Path):
-        """No agent-setting in first 5 lines + no subagents/ dir → unknown."""
-        session_id = "sess-unknown"
+        """No agent-setting in first 10 lines + no subagents/ dir → main."""
+        session_id = "sess-main"
         project_dir = tmp_path / "projects" / "proj"
         project_dir.mkdir(parents=True)
         jsonl = project_dir / f"{session_id}.jsonl"
@@ -219,7 +219,91 @@ class TestAgentSettingResolution:
 
         session = _parse_session(jsonl, "proj")
         assert session is not None
+        assert session.root_agent == "main"
+
+    def test_no_agent_setting_no_subagents_dir_falls_back_to_main(self, tmp_path: Path):
+        """No agent-setting + no subagents/ dir → root_agent == 'main'.
+
+        Represents a plain top-level CLI session (e.g. opens with
+        file-history-snapshot) that has no agent-setting record anywhere
+        in the first 10 lines. These should be labelled 'main', not
+        'unknown'.
+        """
+        session_id = "sess-main-fallback"
+        project_dir = tmp_path / "projects" / "proj"
+        project_dir.mkdir(parents=True)
+        jsonl = project_dir / f"{session_id}.jsonl"
+        _write_jsonl(
+            jsonl,
+            [
+                {"type": "file-history-snapshot", "sessionId": session_id},
+                _make_assistant_line(session_id),
+            ],
+        )
+
+        session = _parse_session(jsonl, "proj")
+        assert session is not None
+        assert session.root_agent == "main"
+
+    def test_empty_file_remains_unknown(self, tmp_path: Path):
+        """Empty JSONL file → root_agent == 'unknown'.
+
+        We do not label degenerate / unreadable sessions as 'main'.
+        """
+        session_id = "sess-empty"
+        project_dir = tmp_path / "projects" / "proj"
+        project_dir.mkdir(parents=True)
+        jsonl = project_dir / f"{session_id}.jsonl"
+        jsonl.write_text("", encoding="utf-8")
+
+        session = _parse_session(jsonl, "proj")
+        assert session is not None
         assert session.root_agent == "unknown"
+
+    def test_agent_setting_at_line_8_is_found(self, tmp_path: Path):
+        """agent-setting placed at line index 8 is found by the N=10 scan."""
+        session_id = "sess-line8"
+        project_dir = tmp_path / "projects" / "proj"
+        project_dir.mkdir(parents=True)
+        jsonl = project_dir / f"{session_id}.jsonl"
+        # 8 filler lines (file-history-snapshot), then agent-setting, then msg
+        filler = [{"type": "file-history-snapshot", "sessionId": session_id}] * 8
+        _write_jsonl(
+            jsonl,
+            filler
+            + [
+                _make_agent_setting_line(session_id, "general-purpose"),
+                _make_assistant_line(session_id),
+            ],
+        )
+
+        session = _parse_session(jsonl, "proj")
+        assert session is not None
+        assert session.root_agent == "general-purpose"
+
+    def test_agent_setting_at_line_15_is_not_found(self, tmp_path: Path):
+        """agent-setting at line index 15 is beyond N=10 and not found.
+
+        Falls through to 'main' (no subagents/ dir), confirming the scan
+        is still bounded.
+        """
+        session_id = "sess-line15"
+        project_dir = tmp_path / "projects" / "proj"
+        project_dir.mkdir(parents=True)
+        jsonl = project_dir / f"{session_id}.jsonl"
+        filler = [{"type": "file-history-snapshot", "sessionId": session_id}] * 15
+        _write_jsonl(
+            jsonl,
+            filler
+            + [
+                _make_agent_setting_line(session_id, "general-purpose"),
+                _make_assistant_line(session_id),
+            ],
+        )
+
+        session = _parse_session(jsonl, "proj")
+        assert session is not None
+        assert session.root_agent == "main"
 
     def test_malformed_json_in_first_5_lines_does_not_crash(self, tmp_path: Path):
         """Malformed JSON lines in the scan window are skipped; scan continues."""
