@@ -1,7 +1,8 @@
+import json
 from datetime import datetime, timezone
 from pathlib import Path
 
-from claude_usage.parser import decode_project_hash, parse_sessions
+from claude_usage.parser import decode_project_hash, parse_sessions, _parse_session
 
 
 class TestDecodeProjectHash:
@@ -86,3 +87,156 @@ class TestParseSessions:
     def test_no_projects_dir(self, tmp_path: Path):
         sessions = parse_sessions(tmp_path)
         assert sessions == []
+
+
+# ---------------------------------------------------------------------------
+# Helpers for agent-setting resolution tests
+# ---------------------------------------------------------------------------
+
+
+def _make_assistant_line(session_id: str) -> dict:
+    """Return a minimal assistant message dict for JSONL."""
+    return {
+        "type": "assistant",
+        "timestamp": "2026-04-09T12:00:05.000Z",
+        "sessionId": session_id,
+        "message": {
+            "model": "claude-opus-4-6",
+            "role": "assistant",
+            "content": [{"type": "text", "text": "hi"}],
+            "usage": {
+                "input_tokens": 10,
+                "output_tokens": 5,
+                "cache_read_input_tokens": 0,
+                "cache_creation_input_tokens": 0,
+            },
+        },
+    }
+
+
+def _make_agent_setting_line(session_id: str, value: str) -> dict:
+    """Return an agent-setting dict for JSONL."""
+    return {
+        "type": "agent-setting",
+        "agentSetting": value,
+        "sessionId": session_id,
+    }
+
+
+def _make_last_prompt_line(session_id: str) -> dict:
+    """Return a last-prompt dict (prepended by recent Claude Code versions)."""
+    return {
+        "type": "last-prompt",
+        "sessionId": session_id,
+        "content": "some prior prompt text",
+    }
+
+
+def _write_jsonl(path: Path, lines: list[dict]) -> None:
+    """Write a list of dicts as JSONL to *path*."""
+    path.write_text(
+        "\n".join(json.dumps(line) for line in lines),
+        encoding="utf-8",
+    )
+
+
+# ---------------------------------------------------------------------------
+# TestAgentSettingResolution
+# ---------------------------------------------------------------------------
+
+
+class TestAgentSettingResolution:
+    """Tests for the bounded agent-setting scan in _parse_session."""
+
+    def test_agent_setting_on_line_0(self, tmp_path: Path):
+        """agent-setting on the first line resolves root_agent correctly."""
+        session_id = "sess-line0"
+        project_dir = tmp_path / "projects" / "proj"
+        project_dir.mkdir(parents=True)
+        jsonl = project_dir / f"{session_id}.jsonl"
+        _write_jsonl(
+            jsonl,
+            [
+                _make_agent_setting_line(session_id, "general-purpose"),
+                _make_assistant_line(session_id),
+            ],
+        )
+
+        session = _parse_session(jsonl, "proj")
+        assert session is not None
+        assert session.root_agent == "general-purpose"
+
+    def test_agent_setting_on_line_1_after_last_prompt(self, tmp_path: Path):
+        """agent-setting on line 1 (after last-prompt) is found by bounded scan."""
+        session_id = "sess-line1"
+        project_dir = tmp_path / "projects" / "proj"
+        project_dir.mkdir(parents=True)
+        jsonl = project_dir / f"{session_id}.jsonl"
+        _write_jsonl(
+            jsonl,
+            [
+                _make_last_prompt_line(session_id),
+                _make_agent_setting_line(session_id, "general-purpose"),
+                _make_assistant_line(session_id),
+            ],
+        )
+
+        session = _parse_session(jsonl, "proj")
+        assert session is not None
+        assert session.root_agent == "general-purpose"
+
+    def test_no_agent_setting_with_subagents_dir(self, tmp_path: Path):
+        """No agent-setting in first 5 lines + subagents/ dir → general-purpose."""
+        session_id = "sess-subagents"
+        project_dir = tmp_path / "projects" / "proj"
+        project_dir.mkdir(parents=True)
+        jsonl = project_dir / f"{session_id}.jsonl"
+        _write_jsonl(
+            jsonl,
+            [
+                _make_assistant_line(session_id),
+            ],
+        )
+        # Create the subagents directory (no metadata files needed)
+        (project_dir / session_id / "subagents").mkdir(parents=True)
+
+        session = _parse_session(jsonl, "proj")
+        assert session is not None
+        assert session.root_agent == "general-purpose"
+
+    def test_no_agent_setting_no_subagents_dir(self, tmp_path: Path):
+        """No agent-setting in first 5 lines + no subagents/ dir → unknown."""
+        session_id = "sess-unknown"
+        project_dir = tmp_path / "projects" / "proj"
+        project_dir.mkdir(parents=True)
+        jsonl = project_dir / f"{session_id}.jsonl"
+        _write_jsonl(
+            jsonl,
+            [
+                _make_assistant_line(session_id),
+            ],
+        )
+
+        session = _parse_session(jsonl, "proj")
+        assert session is not None
+        assert session.root_agent == "unknown"
+
+    def test_malformed_json_in_first_5_lines_does_not_crash(self, tmp_path: Path):
+        """Malformed JSON lines in the scan window are skipped; scan continues."""
+        session_id = "sess-malformed"
+        project_dir = tmp_path / "projects" / "proj"
+        project_dir.mkdir(parents=True)
+        jsonl = project_dir / f"{session_id}.jsonl"
+        # Write raw text: line 0 bad JSON, line 1 valid agent-setting
+        content = (
+            "this is not json\n"
+            + json.dumps(_make_agent_setting_line(session_id, "ops"))
+            + "\n"
+            + json.dumps(_make_assistant_line(session_id))
+            + "\n"
+        )
+        jsonl.write_text(content, encoding="utf-8")
+
+        session = _parse_session(jsonl, "proj")
+        assert session is not None
+        assert session.root_agent == "ops"
