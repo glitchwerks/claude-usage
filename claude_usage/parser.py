@@ -86,28 +86,56 @@ def _parse_jsonl_messages(jsonl_path: Path, agent_type: str) -> list[MessageReco
     return messages
 
 
+_AGENT_SETTING_SCAN_LINES = 5
+
+
 def _parse_session(jsonl_path: Path, project_name: str) -> SessionRecord | None:
-    """Parse a single session JSONL file and its subagents."""
+    """Parse a single session JSONL file and its subagents.
+
+    Agent-setting resolution uses a three-branch strategy to handle recent
+    Claude Code versions that prepend a ``last-prompt`` line before the
+    ``agent-setting`` line:
+
+    1. **Bounded scan**: read the first ``_AGENT_SETTING_SCAN_LINES`` lines;
+       use the ``agentSetting`` value from the first ``agent-setting`` entry.
+    2. **Subagents fallback**: if no ``agent-setting`` was found and the
+       ``<session_id>/subagents/`` directory exists (only the router spawns
+       sub-agents, implying general-purpose), set ``root_agent`` to
+       ``"general-purpose"``.
+    3. **Unknown preserved**: otherwise leave ``root_agent`` as ``"unknown"``.
+    """
     session_id = jsonl_path.stem
 
-    # Read agent-setting from first line
+    # Resolve the subagent directory early — needed for the fallback branch.
+    subagent_dir = jsonl_path.parent / session_id / "subagents"
+
+    # Branch 1: bounded scan for agent-setting in the first N lines.
     root_agent = "unknown"
     with open(jsonl_path, "r", encoding="utf-8") as f:
-        first_line = f.readline().strip()
-        if first_line:
+        for _ in range(_AGENT_SETTING_SCAN_LINES):
+            raw = f.readline()
+            if not raw:
+                break
+            line = raw.strip()
+            if not line:
+                continue
             try:
-                first = json.loads(first_line)
-                if first.get("type") == "agent-setting":
-                    root_agent = first.get("agentSetting", "unknown")
+                entry = json.loads(line)
             except json.JSONDecodeError:
-                pass
+                continue
+            if entry.get("type") == "agent-setting":
+                root_agent = entry.get("agentSetting", "unknown")
+                break
+
+    # Branch 2: subagents-directory fallback when no agent-setting found.
+    if root_agent == "unknown" and subagent_dir.is_dir():
+        root_agent = "general-purpose"
 
     # Parse parent session messages
     messages = _parse_jsonl_messages(jsonl_path, root_agent)
 
     # Parse subagent messages
     subagent_types: list[str] = []
-    subagent_dir = jsonl_path.parent / session_id / "subagents"
     if subagent_dir.is_dir():
         for meta_path in subagent_dir.glob("*.meta.json"):
             try:
