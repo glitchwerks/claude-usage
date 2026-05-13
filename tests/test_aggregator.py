@@ -17,7 +17,7 @@ def _msg(
     return MessageRecord(
         timestamp=ts or datetime(2026, 4, 9, 12, 0, 0, tzinfo=timezone.utc),
         model=model,
-        agent_type=agent,
+        agent_path=(agent,),
         skill=skill,
         input_tokens=input_t,
         output_tokens=output_t,

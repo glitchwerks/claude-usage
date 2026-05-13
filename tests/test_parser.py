@@ -2,7 +2,12 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
-from claude_usage.parser import decode_project_hash, parse_sessions, _parse_session
+from claude_usage.parser import (
+    decode_project_hash,
+    parse_sessions,
+    _parse_session,
+    _parse_jsonl_messages,
+)
 
 
 class TestDecodeProjectHash:
@@ -324,3 +329,19 @@ class TestAgentSettingResolution:
         session = _parse_session(jsonl, "proj")
         assert session is not None
         assert session.root_agent == "ops"
+
+
+class TestParseJsonlMessages:
+    """Tests for _parse_jsonl_messages path-tuple assignment."""
+
+    def test_assigns_full_path(self, tmp_path: Path):
+        """Messages carry the full agent_path tuple passed to the function."""
+        session_id = "sess-path"
+        project_dir = tmp_path / "projects" / "proj"
+        project_dir.mkdir(parents=True)
+        jsonl = project_dir / f"{session_id}.jsonl"
+        _write_jsonl(jsonl, [_make_assistant_line(session_id)])
+
+        messages = _parse_jsonl_messages(jsonl, agent_path=("router", "planner"))
+        assert len(messages) == 1
+        assert messages[0].agent_path == ("router", "planner")

@@ -12,12 +12,17 @@ class MessageRecord:
 
     timestamp: datetime
     model: str
-    agent_type: str
+    agent_path: tuple[str, ...]
     skill: str | None
     input_tokens: int
     output_tokens: int
     cache_read_tokens: int
     cache_creation_tokens: int
+
+    @property
+    def agent_type(self) -> str:
+        """Leaf agent (for backward compat). Returns last segment of agent_path."""
+        return self.agent_path[-1]
 
     @property
     def total_tokens(self) -> int:
