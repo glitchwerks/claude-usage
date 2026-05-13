@@ -80,7 +80,7 @@ claude-usage/
 ### Module Responsibilities
 
 **`models.py`** — Data classes representing parsed data:
-- `MessageRecord`: timestamp, model, `agent_path: tuple[str, ...]` (root-to-leaf chain, e.g. `("general-purpose", "project-planner", "Explore")`), skill (optional), input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens. The `agent_type: str` property returns `agent_path[-1]` for backward compatibility (parser invariant: `agent_type == agent_path[-1]` when `agent_path` is non-empty).
+- `MessageRecord`: timestamp, model, `agent_path: tuple[str, ...]` (root-to-leaf chain, e.g. `("general-purpose", "project-planner", "Explore")`), `agent_type: str` (stored field, parallel to `agent_path`; parser-enforced invariant: `agent_type == agent_path[-1]` when `agent_path` is non-empty — the dataclass does not derive this automatically), skill (optional), input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens.
 - `SessionRecord`: session_id, project, start_time, root_agent, messages (list of MessageRecord), subagents (list of agent types)
 - Total tokens computed as sum of all four token fields
 

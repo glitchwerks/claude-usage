@@ -139,9 +139,13 @@ sub-agents, `claude-usage` traces the full depth and attributes tokens to the
 complete root-to-leaf chain rather than just the immediate leaf.
 
 - **Data model.** Each `MessageRecord` carries an `agent_path: tuple[str, ...]`
-  field (e.g. `("general-purpose", "project-planner", "Explore")`). The
-  existing `agent_type` property returns the leaf segment (`agent_path[-1]`)
-  for backward compatibility with any code that reads the flat leaf name.
+  field (e.g. `("general-purpose", "project-planner", "Explore")`) and a
+  parallel `agent_type: str` stored field. Both are populated together at parse
+  time; the parser enforces the invariant `agent_type == agent_path[-1]` (when
+  `agent_path` is non-empty). `agent_type` is not a computed property — it is a
+  plain dataclass field, so consumers that construct `MessageRecord` with an
+  explicit `agent_type=` argument continue to work without change. The two
+  fields are kept in sync by the parser, not by the dataclass itself.
 
 - **`by_agent` keys.** The aggregator's `by_agent` dict is keyed by the full
   path joined with U+2192 (`→`), for example
