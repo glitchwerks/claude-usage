@@ -177,9 +177,9 @@ class TestFormatJson:
             cwd=WORKTREE_ROOT,
         )
         assert result.returncode == 0
-        assert not (tmp_path / "out.html").exists(), (
-            "HTML file should not be written in json mode"
-        )
+        assert not (
+            tmp_path / "out.html"
+        ).exists(), "HTML file should not be written in json mode"
 
 
 class TestFormatHtmlDefault:

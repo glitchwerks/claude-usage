@@ -120,9 +120,9 @@ class TestPathologicalDepthFixture:
             subagents_dir = current / "subagents"
             assert subagents_dir.is_dir(), f"Missing subagents/ at depth {depth}"
             meta_files = list(subagents_dir.glob("*.meta.json"))
-            assert len(meta_files) == 1, (
-                f"Expected 1 meta.json at depth {depth}, got {len(meta_files)}"
-            )
+            assert (
+                len(meta_files) == 1
+            ), f"Expected 1 meta.json at depth {depth}, got {len(meta_files)}"
             agent_id = meta_files[0].stem.replace(".meta", "")
             current = subagents_dir / agent_id
 
@@ -237,7 +237,7 @@ class TestSiblingSharedLeafFixture:
         )
         # All three must be distinct and non-zero
         token_set = {explore_a_tokens, pp_tokens, explore_b_tokens}
-        assert len(token_set) == 3, (
-            f"Token counts must all be distinct; got {token_set}"
-        )
+        assert (
+            len(token_set) == 3
+        ), f"Token counts must all be distinct; got {token_set}"
         assert all(t > 0 for t in token_set)

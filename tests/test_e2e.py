@@ -217,18 +217,18 @@ class TestSubagentModelAttribution:
         sessions = parse_sessions(session_dir)
         result = aggregate(sessions)
 
-        assert "general-purpose→debugger" in result.by_agent, (
-            "debugger agent should be present as 'general-purpose→debugger'"
-        )
+        assert (
+            "general-purpose→debugger" in result.by_agent
+        ), "debugger agent should be present as 'general-purpose→debugger'"
         assert (
             result.by_agent["general-purpose→debugger"]["primary_model"] == "sonnet"
         ), (
             "debugger ran on claude-sonnet-4-6; primary_model must be 'sonnet', "
             f"got {result.by_agent['general-purpose→debugger']['primary_model']!r}"
         )
-        assert result.by_agent["general-purpose"]["primary_model"] == "opus", (
-            "general-purpose ran on claude-opus-4-6; primary_model must be 'opus'"
-        )
+        assert (
+            result.by_agent["general-purpose"]["primary_model"] == "opus"
+        ), "general-purpose ran on claude-opus-4-6; primary_model must be 'opus'"
 
     def test_rendered_html_embeds_correct_primary_model_for_subagent(
         self, tmp_path: Path
@@ -254,9 +254,9 @@ class TestSubagentModelAttribution:
         end = html.index(";\n", start)
         data = json.loads(html[start:end])
 
-        assert "general-purpose→debugger" in data["by_agent"], (
-            "by_agent must contain 'general-purpose→debugger'"
-        )
+        assert (
+            "general-purpose→debugger" in data["by_agent"]
+        ), "by_agent must contain 'general-purpose→debugger'"
         actual = data["by_agent"]["general-purpose→debugger"]["primary_model"]
         assert actual == "sonnet", (
             f"DATA.by_agent['general-purpose→debugger'].primary_model must be "

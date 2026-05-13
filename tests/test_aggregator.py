@@ -219,9 +219,9 @@ class TestAggregateByAgentPath:
             )
         ]
         result = aggregate(sessions)
-        assert result.by_agent == {"main": result.by_agent["main"]}, (
-            "Depth-1 session must produce a single-segment key 'main'"
-        )
+        assert result.by_agent == {
+            "main": result.by_agent["main"]
+        }, "Depth-1 session must produce a single-segment key 'main'"
         assert result.by_agent["main"]["total_tokens"] == 150
 
     def test_depth_two_uses_delimited_key(self):
@@ -239,9 +239,9 @@ class TestAggregateByAgentPath:
         ]
         result = aggregate(sessions)
         key = f"general-purpose{AGENT_PATH_SEPARATOR}code-writer"
-        assert key in result.by_agent, (
-            f"Depth-2 path key '{key}' must appear in by_agent"
-        )
+        assert (
+            key in result.by_agent
+        ), f"Depth-2 path key '{key}' must appear in by_agent"
         assert result.by_agent[key]["total_tokens"] == 300
 
     def test_depth_three_uses_full_path_key(self, nested_session_dir: Path):
@@ -294,13 +294,13 @@ class TestAggregateByAgentPath:
             f"general-purpose{AGENT_PATH_SEPARATOR}"
             f"project-planner{AGENT_PATH_SEPARATOR}Explore"
         )
-        assert full_key in agents, (
-            f"Deepest-leaf key '{full_key}' must be in agents. Got: {agents}"
-        )
+        assert (
+            full_key in agents
+        ), f"Deepest-leaf key '{full_key}' must be in agents. Got: {agents}"
         # Ancestors must be absent
-        assert "general-purpose" not in agents, (
-            "Root key 'general-purpose' must NOT appear as it is an ancestor"
-        )
+        assert (
+            "general-purpose" not in agents
+        ), "Root key 'general-purpose' must NOT appear as it is an ancestor"
         assert (
             f"general-purpose{AGENT_PATH_SEPARATOR}project-planner"
         ) not in agents, "Intermediate key must NOT appear as it is an ancestor"
@@ -342,12 +342,12 @@ class TestAggregateByAgentPath:
         )
 
         # Both must be in by_agent with non-zero tokens
-        assert gp_explore in result.by_agent, (
-            f"'{gp_explore}' must be in by_agent. Keys: {sorted(result.by_agent)}"
-        )
-        assert gp_pp_explore in result.by_agent, (
-            f"'{gp_pp_explore}' must be in by_agent"
-        )
+        assert (
+            gp_explore in result.by_agent
+        ), f"'{gp_explore}' must be in by_agent. Keys: {sorted(result.by_agent)}"
+        assert (
+            gp_pp_explore in result.by_agent
+        ), f"'{gp_pp_explore}' must be in by_agent"
         # 150 input + 75 output = 225 total for explore-a
         assert result.by_agent[gp_explore]["total_tokens"] == 225
         # 350 input + 175 output = 525 total for explore-b
@@ -372,27 +372,27 @@ class TestAggregateByAgentPath:
         ]
         result = aggregate(sessions)
         assert len(result.sessions) == 1
-        assert result.sessions[0]["agents"] == ["general-purpose"], (
-            "Depth-1 session must emit the root key as the sole agent"
-        )
+        assert result.sessions[0]["agents"] == [
+            "general-purpose"
+        ], "Depth-1 session must emit the root key as the sole agent"
 
     def test_primary_model_per_path_key(self, nested_session_dir: Path):
         """Each by_agent entry carries a primary_model field."""
         sessions = parse_sessions(nested_session_dir)
         result = aggregate(sessions)
         for key, bucket in result.by_agent.items():
-            assert "primary_model" in bucket, (
-                f"by_agent['{key}'] is missing 'primary_model'"
-            )
+            assert (
+                "primary_model" in bucket
+            ), f"by_agent['{key}'] is missing 'primary_model'"
 
     def test_session_count_per_path_key(self, nested_session_dir: Path):
         """Each by_agent entry carries a session_count field."""
         sessions = parse_sessions(nested_session_dir)
         result = aggregate(sessions)
         for key, bucket in result.by_agent.items():
-            assert "session_count" in bucket, (
-                f"by_agent['{key}'] is missing 'session_count'"
-            )
+            assert (
+                "session_count" in bucket
+            ), f"by_agent['{key}'] is missing 'session_count'"
 
 
 def _make_path_msg(
