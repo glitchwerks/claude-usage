@@ -2,10 +2,17 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from claude_usage.aggregator import AggregateResult
 from claude_usage.renderer import render
+
+# U+2192 RIGHTWARDS ARROW — the candidate separator for nested agent path keys.
+# Phase 0 Task 0.1 settles whether this character survives the renderer's
+# Jinja autoescape pass intact (or as an HTML entity) and whether it appears
+# verbatim in the embedded JSON payload that the dashboard JS reads.
+_ARROW = "→"
 
 
 def _minimal_result() -> AggregateResult:
@@ -53,12 +60,12 @@ class TestResponsiveness:
         desktop view.
         """
         html = _render_html(tmp_path)
-        assert (
-            'name="viewport"' in html
-        ), "Rendered HTML must contain a viewport meta tag."
-        assert (
-            "width=device-width" in html
-        ), "Viewport meta tag must include width=device-width."
+        assert 'name="viewport"' in html, (
+            "Rendered HTML must contain a viewport meta tag."
+        )
+        assert "width=device-width" in html, (
+            "Viewport meta tag must include width=device-width."
+        )
 
     def test_gauge_grid_uses_auto_fill(self, tmp_path: Path) -> None:
         """Gauge grid must use auto-fill or responsive grid-template-columns.
@@ -107,3 +114,105 @@ class TestResponsiveness:
             "query to reflow as stacked cards, or use overflow-x:auto on a "
             "containing element."
         )
+
+
+def test_path_keys_render_through(tmp_path: Path) -> None:
+    """Separator U+2192 in by_agent keys survives the renderer intact.
+
+    Phase 0 Task 0.1 — empirically settles the separator choice before any
+    fixture or downstream test is written against it.
+
+    **Empirical finding (captured at Phase 0 Task 0.1 execution):**
+
+    ``json.dumps`` uses ``ensure_ascii=True`` by default, so U+2192 is
+    serialised as the JSON Unicode escape ``\\u2192`` rather than the raw
+    UTF-8 byte sequence.  The HTML therefore contains the string literal
+    ``"general-purpose\\u2192code-writer"`` (8 ASCII chars, not 1 Unicode
+    char) inside the ``const DATA = ...`` block.
+
+    This is *transparent* to the browser: ``JSON.parse`` decodes ``\\u2192``
+    back to the ``→`` codepoint, so
+    ``DATA.by_agent["general-purpose→code-writer"]`` resolves correctly in JS.
+    The separator round-trips correctly; no production code changes are
+    required.
+
+    Two independent assertions confirm the round-trip:
+
+    1. **JSON escape form present in raw HTML**: the literal ASCII sequence
+       ``\\u2192`` (or the raw UTF-8 ``→``) appears inside the embedded DATA
+       block.  The HTML-entity forms ``&#8594;`` and ``&rarr;`` are also
+       accepted for completeness, though neither is produced by the current
+       renderer.
+
+    2. **JSON round-trip**: parsing the embedded DATA object via
+       ``json.JSONDecoder`` yields the original path key as a Python string,
+       proving the browser will see the same key.
+
+    This test is a permanent regression gate: if a future change causes the
+    separator to be HTML-entity-escaped *inside* the JSON payload (which
+    would make ``JSON.parse`` yield ``&rarr;`` rather than ``→``), or
+    stripped entirely, this test will fail before any downstream fixture is
+    affected.
+    """
+    # Build a synthetic AggregateResult whose by_agent contains a path-keyed
+    # entry.  No parser or aggregator changes are involved — the dict is
+    # constructed directly to test only the renderer.
+    path_key = f"general-purpose{_ARROW}code-writer"
+    result = AggregateResult()
+    result.by_agent[path_key] = {
+        "total_tokens": 100,
+        "primary_model": "opus",
+        "session_count": 1,
+    }
+
+    output = tmp_path / "dashboard.html"
+    render(result, output_path=output, open_browser=False)
+    html = output.read_text(encoding="utf-8")
+
+    # --- Assertion 1: separator present in HTML source in a readable form ---
+    # json.dumps(ensure_ascii=True) replaces U+2192 with the 6-char ASCII
+    # sequence backslash-u-2-1-9-2.  Jinja's autoescape with | safe leaves
+    # this JSON content untouched, so the HTML source contains the ASCII
+    # escape form verbatim.
+    # Accept any of: raw UTF-8 char, JSON Unicode escape, or HTML entities.
+    #
+    # Derive the JSON-escaped key form programmatically to avoid hardcoding
+    # the backslash-u sequence (which is fragile under copy-paste and editor
+    # normalisation).  json.dumps strips the surrounding double-quotes.
+    json_escaped_key = json.dumps(path_key)[1:-1]  # e.g. general-purpose→code-writer
+    raw_in_html = path_key in html
+    json_escaped_in_html = json_escaped_key in html
+    entity_decimal_in_html = "general-purpose&#8594;code-writer" in html
+    entity_named_in_html = "general-purpose&rarr;code-writer" in html
+
+    assert (
+        raw_in_html
+        or json_escaped_in_html
+        or entity_decimal_in_html
+        or entity_named_in_html
+    ), (
+        f"Rendered HTML does not contain the path key in any recognisable "
+        f"form. Expected one of: raw U+2192, JSON \\u2192 escape, "
+        f"&#8594;, or &rarr;. "
+        f"Key was: {path_key!r}, "
+        f"JSON-escaped form was: {json_escaped_key!r}"
+    )
+
+    # --- Assertion 2: JSON payload round-trip ---
+    # Parse the embedded DATA block to confirm the key decodes back to the
+    # original Python string (U+2192 codepoint, not a literal backslash-u).
+    # The template renders: const DATA = {{ data_json | safe }};
+    # json.JSONDecoder.raw_decode handles \uXXXX escapes transparently.
+    data_line_marker = "const DATA = "
+    data_start = html.index(data_line_marker) + len(data_line_marker)
+    decoder = json.JSONDecoder()
+    data_obj, _ = decoder.raw_decode(html, data_start)
+
+    assert path_key in data_obj["by_agent"], (
+        f"Parsed DATA.by_agent does not contain the path key {path_key!r}. "
+        f"json.JSONDecoder did not decode \\u2192 back to U+2192. "
+        f"Keys present: {list(data_obj['by_agent'].keys())}"
+    )
+    assert data_obj["by_agent"][path_key]["total_tokens"] == 100, (
+        "Round-tripped by_agent entry must preserve the total_tokens value."
+    )

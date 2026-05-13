@@ -144,9 +144,7 @@ class TestExtractSkillsFromPrompt:
         assert result == ["powershell"]
 
     def test_multiple_skills_in_prompt(self):
-        prompt = (
-            "Use the `python` skill and invoke " "`superpowers:brainstorming` first."
-        )
+        prompt = "Use the `python` skill and invoke `superpowers:brainstorming` first."
         result = extract_skills_from_prompt(prompt, self.allowlist)
         assert result == ["python", "superpowers:brainstorming"]
 

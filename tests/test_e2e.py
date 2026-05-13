@@ -222,9 +222,9 @@ class TestSubagentModelAttribution:
             "debugger ran on claude-sonnet-4-6; primary_model must be 'sonnet', "
             f"got {result.by_agent['debugger']['primary_model']!r}"
         )
-        assert (
-            result.by_agent["general-purpose"]["primary_model"] == "opus"
-        ), "general-purpose ran on claude-opus-4-6; primary_model must be 'opus'"
+        assert result.by_agent["general-purpose"]["primary_model"] == "opus", (
+            "general-purpose ran on claude-opus-4-6; primary_model must be 'opus'"
+        )
 
     def test_rendered_html_embeds_correct_primary_model_for_subagent(
         self, tmp_path: Path
