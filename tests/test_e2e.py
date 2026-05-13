@@ -217,10 +217,14 @@ class TestSubagentModelAttribution:
         sessions = parse_sessions(session_dir)
         result = aggregate(sessions)
 
-        assert "debugger" in result.by_agent, "debugger agent should be present"
-        assert result.by_agent["debugger"]["primary_model"] == "sonnet", (
+        assert (
+            "general-purpose→debugger" in result.by_agent
+        ), "debugger agent should be present as 'general-purpose→debugger'"
+        assert (
+            result.by_agent["general-purpose→debugger"]["primary_model"] == "sonnet"
+        ), (
             "debugger ran on claude-sonnet-4-6; primary_model must be 'sonnet', "
-            f"got {result.by_agent['debugger']['primary_model']!r}"
+            f"got {result.by_agent['general-purpose→debugger']['primary_model']!r}"
         )
         assert (
             result.by_agent["general-purpose"]["primary_model"] == "opus"
@@ -250,11 +254,15 @@ class TestSubagentModelAttribution:
         end = html.index(";\n", start)
         data = json.loads(html[start:end])
 
-        assert "debugger" in data["by_agent"], "by_agent must contain debugger"
-        actual = data["by_agent"]["debugger"]["primary_model"]
+        assert (
+            "general-purpose→debugger" in data["by_agent"]
+        ), "by_agent must contain 'general-purpose→debugger'"
+        actual = data["by_agent"]["general-purpose→debugger"]["primary_model"]
         assert actual == "sonnet", (
-            f"DATA.by_agent.debugger.primary_model must be 'sonnet' in rendered HTML, got {actual!r}. "
-            "The JS fix uses this value as authoritative; if it is wrong here the dashboard will still misattribute."
+            f"DATA.by_agent['general-purpose→debugger'].primary_model must be "
+            f"'sonnet' in rendered HTML, got {actual!r}. "
+            "The JS fix uses this value as authoritative; if it is wrong here "
+            "the dashboard will still misattribute."
         )
 
 

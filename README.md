@@ -132,6 +132,51 @@ claude-usage dashboard --format json
 Any script, skill, or CI step that invokes `claude-usage` with bare flags
 (no subcommand) must be updated to use `claude-usage dashboard [flags]`.
 
+## Nested agent attribution
+
+When Claude Code sessions dispatch sub-agents that themselves dispatch further
+sub-agents, `claude-usage` traces the full depth and attributes tokens to the
+complete root-to-leaf chain rather than just the immediate leaf.
+
+- **Data model.** Each `MessageRecord` carries an `agent_path: tuple[str, ...]`
+  field (e.g. `("general-purpose", "project-planner", "Explore")`) and a
+  parallel `agent_type: str` stored field. Both are populated together at parse
+  time; the parser enforces the invariant `agent_type == agent_path[-1]` (when
+  `agent_path` is non-empty). `agent_type` is not a computed property — it is a
+  plain dataclass field, so consumers that construct `MessageRecord` with an
+  explicit `agent_type=` argument continue to work without change. The two
+  fields are kept in sync by the parser, not by the dataclass itself.
+
+- **`by_agent` keys.** The aggregator's `by_agent` dict is keyed by the full
+  path joined with U+2192 (`→`), for example
+  `"general-purpose→project-planner→Explore"`. Depth-1 sessions produce
+  single-segment keys identical to the pre-change shape, so existing
+  integrations are unaffected.
+
+- **Per-session `agents` list.** Each session's `agents` list contains only
+  the deepest-leaf path per chain (e.g. a depth-3 chain
+  `general-purpose → project-planner → Explore` contributes one entry,
+  `"general-purpose→project-planner→Explore"`). Sibling chains that share a
+  leaf name but differ in their ancestor are both kept — neither is a prefix
+  of the other. This rule preserves the dashboard JS's per-agent token
+  apportionment, which divides session totals by `s.agents.length`.
+
+- **Depth limit.** The parser enforces `_MAX_AGENT_DEPTH = 10` segments. If
+  a chain exceeds this limit the parser emits a `UserWarning` and stops
+  descending; deeper messages are bucketed under the last walked ancestor.
+  On Windows, junction-based cycles are caught by this same cap rather than
+  by the POSIX visited-set short-circuit.
+
+- **Sanitization.** A literal `→` appearing inside an agent name is replaced
+  with `﹖` (U+FE56) at parse time and a `UserWarning` fires. The sanitized
+  name is used throughout (parse, aggregation, dashboard key) so attribution
+  data is preserved even when the invariant is violated.
+
+- **Deferred.** Dashboard tree visualization (sunburst, indented tree,
+  expand/collapse) is out of scope for this release. The existing flat agent
+  list in the dashboard JS receives path-keyed entries but no hierarchical
+  rendering yet.
+
 ## Dashboard
 
 The generated HTML dashboard includes:

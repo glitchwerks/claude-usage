@@ -184,7 +184,7 @@ class TestBuildSessionSummary:
                     "message": {
                         "role": "user",
                         "content": (
-                            "Implement the login feature. " "Make it work with OAuth."
+                            "Implement the login feature. Make it work with OAuth."
                         ),
                     },
                     "uuid": "u-001",
@@ -1152,7 +1152,7 @@ class TestCollapseConsecutive:
         from claude_usage.cli.session_summary import build_session_summary
 
         fixture = Path(
-            "tests/fixtures/session_summaries/" "consecutive_edits_same_file.jsonl"
+            "tests/fixtures/session_summaries/consecutive_edits_same_file.jsonl"
         )
         summary = build_session_summary(_parse_fixture(fixture))
 
@@ -1418,7 +1418,7 @@ class TestExitNotJsonl:
         """
         malformed = tmp_path / "all_malformed.jsonl"
         malformed.write_text(
-            "this is not json\n" "{also not json\n" "definitely: not: json: either\n"
+            "this is not json\n{also not json\ndefinitely: not: json: either\n"
         )
         result = subprocess.run(
             [

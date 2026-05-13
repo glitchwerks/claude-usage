@@ -793,7 +793,7 @@ def run(args: argparse.Namespace) -> int:
     skipped = non_blank_lines - len(entries)
     if skipped > 0:
         print(
-            f"session-summary: skipped {skipped} malformed line(s)" f" in '{path}'",
+            f"session-summary: skipped {skipped} malformed line(s) in '{path}'",
             file=sys.stderr,
         )
 
