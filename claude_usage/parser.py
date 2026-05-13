@@ -45,9 +45,11 @@ def _extract_skill(content: list[dict]) -> str | None:
 
 
 def _parse_jsonl_messages(
-    jsonl_path: Path, agent_path: tuple[str, ...]
+    jsonl_path: Path,
+    agent_type: str,
+    agent_path: tuple[str, ...] = (),
 ) -> list[MessageRecord]:
-    """Parse assistant messages from a JSONL file, attributing to agent_path."""
+    """Parse assistant messages from a JSONL file, attributing to agent."""
     messages: list[MessageRecord] = []
     with open(jsonl_path, "r", encoding="utf-8") as f:
         for line in f:
@@ -77,12 +79,13 @@ def _parse_jsonl_messages(
                 MessageRecord(
                     timestamp=timestamp,
                     model=model,
-                    agent_path=agent_path,
+                    agent_type=agent_type,
                     skill=skill,
                     input_tokens=usage.get("input_tokens", 0),
                     output_tokens=usage.get("output_tokens", 0),
                     cache_read_tokens=usage.get("cache_read_input_tokens", 0),
                     cache_creation_tokens=usage.get("cache_creation_input_tokens", 0),
+                    agent_path=agent_path,
                 )
             )
     return messages
@@ -148,7 +151,9 @@ def _parse_session(jsonl_path: Path, project_name: str) -> SessionRecord | None:
         root_agent = "main"
 
     # Parse parent session messages
-    messages = _parse_jsonl_messages(jsonl_path, (root_agent,))
+    messages = _parse_jsonl_messages(
+        jsonl_path, agent_type=root_agent, agent_path=(root_agent,)
+    )
 
     # Parse subagent messages
     subagent_types: list[str] = []
@@ -166,7 +171,13 @@ def _parse_session(jsonl_path: Path, project_name: str) -> SessionRecord | None:
             agent_id = meta_path.stem.replace(".meta", "")
             sub_jsonl = subagent_dir / f"{agent_id}.jsonl"
             if sub_jsonl.is_file():
-                messages.extend(_parse_jsonl_messages(sub_jsonl, (agent_type,)))
+                messages.extend(
+                    _parse_jsonl_messages(
+                        sub_jsonl,
+                        agent_type=agent_type,
+                        agent_path=(agent_type,),
+                    )
+                )
 
     if not messages:
         start_time = datetime.now(timezone.utc)

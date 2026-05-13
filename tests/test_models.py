@@ -14,7 +14,7 @@ class TestMessageRecord:
         msg = MessageRecord(
             timestamp=datetime(2026, 4, 9, 12, 0, 0, tzinfo=timezone.utc),
             model="claude-opus-4-6",
-            agent_path=("general-purpose",),
+            agent_type="general-purpose",
             skill=None,
             input_tokens=100,
             output_tokens=50,
@@ -27,7 +27,7 @@ class TestMessageRecord:
         msg = MessageRecord(
             timestamp=datetime(2026, 4, 9, 12, 0, 0, tzinfo=timezone.utc),
             model="claude-sonnet-4-6",
-            agent_path=("code-writer",),
+            agent_type="code-writer",
             skill="superpowers:brainstorming",
             input_tokens=0,
             output_tokens=0,
@@ -40,7 +40,7 @@ class TestMessageRecord:
         msg = MessageRecord(
             timestamp=datetime(2026, 4, 9, 12, 0, 0, tzinfo=timezone.utc),
             model="claude-opus-4-6",
-            agent_path=("general-purpose",),
+            agent_type="general-purpose",
             skill=None,
             input_tokens=0,
             output_tokens=0,
@@ -53,7 +53,7 @@ class TestMessageRecord:
         msg = MessageRecord(
             timestamp=datetime(2026, 4, 9, 12, 0, 0, tzinfo=timezone.utc),
             model="claude-sonnet-4-6",
-            agent_path=("code-writer",),
+            agent_type="code-writer",
             skill=None,
             input_tokens=0,
             output_tokens=0,
@@ -66,7 +66,7 @@ class TestMessageRecord:
         msg = MessageRecord(
             timestamp=datetime(2026, 4, 9, 12, 0, 0, tzinfo=timezone.utc),
             model="claude-haiku-4-5-20251001",
-            agent_path=("ops",),
+            agent_type="ops",
             skill=None,
             input_tokens=0,
             output_tokens=0,
@@ -79,7 +79,7 @@ class TestMessageRecord:
         msg = MessageRecord(
             timestamp=datetime(2026, 4, 9, 12, 0, 0, tzinfo=timezone.utc),
             model="claude-future-model-9",
-            agent_path=("general-purpose",),
+            agent_type="general-purpose",
             skill=None,
             input_tokens=0,
             output_tokens=0,
@@ -104,7 +104,7 @@ class TestSessionRecord:
         return MessageRecord(
             timestamp=ts or datetime(2026, 4, 9, 12, 0, 0, tzinfo=timezone.utc),
             model=model,
-            agent_path=(agent,),
+            agent_type=agent,
             skill=skill,
             input_tokens=input_t,
             output_tokens=output_t,
@@ -178,11 +178,13 @@ class TestSessionRecord:
 
 
 class TestAgentPath:
-    """Tests for the agent_path field and backward-compat agent_type property."""
+    """Tests for the agent_path and agent_type parallel stored fields."""
 
     _TS = datetime(2026, 5, 13, 12, 0, 0, tzinfo=timezone.utc)
 
     def _make(self, agent_path, model="claude-opus-4-7", **kwargs):
+        # Mirror the parser invariant: agent_type defaults to leaf of path.
+        kwargs.setdefault("agent_type", agent_path[-1])
         defaults = dict(
             timestamp=self._TS,
             model=model,
@@ -195,7 +197,8 @@ class TestAgentPath:
         defaults.update(kwargs)
         return MessageRecord(agent_path=agent_path, **defaults)
 
-    def test_agent_type_returns_leaf(self):
+    def test_agent_type_equals_leaf_when_invariant_held(self):
+        """Parser invariant: agent_type matches agent_path leaf at construction."""
         record = self._make(agent_path=("router", "planner", "Explore"))
         assert record.agent_type == "Explore"
 
@@ -241,6 +244,26 @@ class TestAgentPath:
             agent_path=("general-purpose",), model="claude-future-model-9"
         )
         assert record.model_short == "claude-future-model-9"
+
+    def test_parallel_field_independence(self):
+        """agent_type and agent_path are stored independently — neither derived.
+
+        A record with agent_type="x" and no agent_path has agent_path==()
+        and agent_type=="x". The invariant agent_type==agent_path[-1] is
+        the parser's responsibility, not enforced by the dataclass.
+        """
+        record = MessageRecord(
+            timestamp=self._TS,
+            model="claude-opus-4-7",
+            agent_type="x",
+            skill=None,
+            input_tokens=0,
+            output_tokens=0,
+            cache_read_tokens=0,
+            cache_creation_tokens=0,
+        )
+        assert record.agent_type == "x"
+        assert record.agent_path == ()
 
 
 class TestSkillPassedEvent:

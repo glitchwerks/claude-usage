@@ -8,21 +8,34 @@ from datetime import datetime
 
 @dataclass(frozen=True, slots=True)
 class MessageRecord:
-    """A single assistant message with token usage, attributed to an agent."""
+    """A single assistant message with token usage, attributed to an agent.
+
+    Attributes:
+        timestamp: When the assistant message was produced.
+        model: Full model ID string (e.g. ``"claude-opus-4-7"``).
+        agent_type: Leaf agent name (e.g. ``"general-purpose"``). Stored
+            independently from ``agent_path``; maintaining the invariant
+            ``agent_type == agent_path[-1]`` (when ``agent_path`` is
+            non-empty) is the parser's responsibility at construction time.
+        agent_path: Full ancestry tuple from root to leaf agent. Defaults
+            to the empty tuple for records that pre-date nested attribution.
+            Neither field is derived from the other.
+        skill: Skill name invoked in this message, or ``None``.
+        input_tokens: Prompt token count.
+        output_tokens: Completion token count.
+        cache_read_tokens: Tokens served from the prompt cache.
+        cache_creation_tokens: Tokens written to the prompt cache.
+    """
 
     timestamp: datetime
     model: str
-    agent_path: tuple[str, ...]
+    agent_type: str
     skill: str | None
     input_tokens: int
     output_tokens: int
     cache_read_tokens: int
     cache_creation_tokens: int
-
-    @property
-    def agent_type(self) -> str:
-        """Leaf agent (for backward compat). Returns last segment of agent_path."""
-        return self.agent_path[-1]
+    agent_path: tuple[str, ...] = ()
 
     @property
     def total_tokens(self) -> int:

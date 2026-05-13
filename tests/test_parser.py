@@ -342,6 +342,8 @@ class TestParseJsonlMessages:
         jsonl = project_dir / f"{session_id}.jsonl"
         _write_jsonl(jsonl, [_make_assistant_line(session_id)])
 
-        messages = _parse_jsonl_messages(jsonl, agent_path=("router", "planner"))
+        messages = _parse_jsonl_messages(
+            jsonl, agent_type="planner", agent_path=("router", "planner")
+        )
         assert len(messages) == 1
         assert messages[0].agent_path == ("router", "planner")
