@@ -1,6 +1,9 @@
 import json
+import warnings
 from datetime import datetime, timezone
 from pathlib import Path
+
+import pytest
 
 from claude_usage.parser import (
     decode_project_hash,
@@ -347,3 +350,142 @@ class TestParseJsonlMessages:
         )
         assert len(messages) == 1
         assert messages[0].agent_path == ("router", "planner")
+
+
+class TestNestedSubagents:
+    """Tests for the recursive subagent walk in Phase 3."""
+
+    def test_depth_three_path_attributed(self, nested_session_dir: Path):
+        """Depth-3 messages carry the full 3-segment agent_path."""
+        sessions = parse_sessions(nested_session_dir)
+        assert len(sessions) == 1
+        all_paths = [m.agent_path for m in sessions[0].messages]
+        assert (
+            "general-purpose",
+            "project-planner",
+            "Explore",
+        ) in all_paths
+
+    def test_depth_two_still_works(self, sample_session_dir: Path):
+        """Existing depth-2 fixture still produces correct 2-segment path."""
+        sessions = parse_sessions(sample_session_dir)
+        assert len(sessions) == 1
+        paths = [m.agent_path for m in sessions[0].messages]
+        assert ("general-purpose", "code-writer") in paths
+
+    def test_subagent_types_flattened(self, nested_session_dir: Path):
+        """subagent_types includes agents from all depths, de-duped and sorted."""
+        sessions = parse_sessions(nested_session_dir)
+        assert len(sessions) == 1
+        sub_types = sessions[0].subagent_types
+        assert "project-planner" in sub_types
+        assert "Explore" in sub_types
+
+    def test_missing_meta_json_skipped(self, tmp_path: Path):
+        """A stray .jsonl without a .meta.json is silently skipped."""
+        session_id = "sess-stray"
+        project_dir = tmp_path / "projects" / "proj"
+        project_dir.mkdir(parents=True)
+        jsonl = project_dir / f"{session_id}.jsonl"
+        _write_jsonl(
+            jsonl,
+            [
+                _make_agent_setting_line(session_id, "general-purpose"),
+                _make_assistant_line(session_id),
+            ],
+        )
+        subagent_dir = project_dir / session_id / "subagents"
+        subagent_dir.mkdir(parents=True)
+        # Stray JSONL with no accompanying .meta.json
+        _write_jsonl(subagent_dir / "orphan.jsonl", [_make_assistant_line(session_id)])
+
+        session = _parse_session(jsonl, "proj")
+        assert session is not None
+        # Only the root message should be present — orphan JSONL ignored
+        assert len(session.messages) == 1
+
+    def test_empty_subagents_dir_no_crash(self, tmp_path: Path):
+        """Empty subagents/ directory at depth 2 does not crash the parser."""
+        session_id = "sess-empty-sub"
+        project_dir = tmp_path / "projects" / "proj"
+        project_dir.mkdir(parents=True)
+        jsonl = project_dir / f"{session_id}.jsonl"
+        _write_jsonl(
+            jsonl,
+            [
+                _make_agent_setting_line(session_id, "general-purpose"),
+                _make_assistant_line(session_id),
+            ],
+        )
+        # Create the subagents directory but leave it empty
+        (project_dir / session_id / "subagents").mkdir(parents=True)
+
+        session = _parse_session(jsonl, "proj")
+        assert session is not None
+        assert len(session.messages) == 1
+
+    def test_pathological_depth_cap(self, pathological_depth_session_dir: Path):
+        """12-deep chain triggers depth-cap warning; no path exceeds depth 10."""
+        with pytest.warns(UserWarning, match=r"depth cap"):
+            sessions = parse_sessions(pathological_depth_session_dir)
+        assert len(sessions) == 1
+        for msg in sessions[0].messages:
+            assert len(msg.agent_path) <= 10, f"agent_path too long: {msg.agent_path!r}"
+
+    def test_pascalcase_agent_name_roundtrips(self, nested_session_dir: Path):
+        """PascalCase agent name 'Explore' survives the path tuple unchanged."""
+        sessions = parse_sessions(nested_session_dir)
+        explore_msgs = [
+            m for m in sessions[0].messages if m.agent_path[-1] == "Explore"
+        ]
+        assert len(explore_msgs) >= 1
+        assert explore_msgs[0].agent_path[-1] == "Explore"
+        # No sanitization warning should fire for a plain PascalCase name
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", UserWarning)
+            _ = parse_sessions(nested_session_dir)
+
+    def test_separator_in_agent_name_sanitized(
+        self, separator_in_name_session_dir: Path
+    ):
+        """Agent name containing '→' is sanitized to '﹖' and a warning fires."""
+        with pytest.warns(UserWarning, match=r"Agent name contains path separator"):
+            sessions = parse_sessions(separator_in_name_session_dir)
+        assert len(sessions) == 1
+        leaf_names = [m.agent_path[-1] for m in sessions[0].messages]
+        assert "weird﹖name" in leaf_names
+        assert "weird→name" not in leaf_names
+
+    def test_symlink_cycle_short_circuits(self, symlink_cycle_session_dir: Path):
+        """Visited-set cycle defense fires before depth cap; warns distinctly.
+
+        Two assertions:
+        (a) Cycle-specific warning fires (distinct from depth-cap warning).
+        (b) Cycled segment appears at most once, and max path depth is <= 3
+            (well below _MAX_AGENT_DEPTH = 10, proving the cap didn't fire).
+        """
+        with pytest.warns(UserWarning, match=r"Subagent directory cycle detected"):
+            sessions = parse_sessions(symlink_cycle_session_dir)
+        assert len(sessions) == 1
+        paths = [m.agent_path for m in sessions[0].messages]
+        # No path should exceed 3 segments (root + 1 level) — far below cap
+        for path in paths:
+            assert len(path) <= 3, f"Path too long for a cycle-stopped walk: {path!r}"
+        # The cycled segment 'agent-x' appears at most once per path
+        for path in paths:
+            assert path.count("agent-x") <= 1, f"Cycled segment repeated: {path!r}"
+
+    def test_depth_cap_fires_when_visited_set_misses(
+        self, pathological_depth_session_dir: Path
+    ):
+        """Non-cyclic 12-deep chain triggers depth-cap (not cycle) warning.
+
+        Distinct message text from the cycle warning proves the two defenses
+        are independently observable.
+        """
+        with pytest.warns(UserWarning, match=r"depth cap"):
+            sessions = parse_sessions(pathological_depth_session_dir)
+        assert len(sessions) == 1
+        # No path should exceed the cap
+        for msg in sessions[0].messages:
+            assert len(msg.agent_path) <= 10

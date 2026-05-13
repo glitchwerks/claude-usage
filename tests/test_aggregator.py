@@ -1,7 +1,9 @@
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 from claude_usage.aggregator import aggregate
 from claude_usage.models import MessageRecord, SessionRecord
+from claude_usage.parser import parse_sessions
 
 
 def _msg(
@@ -193,3 +195,52 @@ class TestAggregateTimeFilter:
         ]
         result = aggregate(sessions, window_hours=5)
         assert result.total_tokens == 300
+
+
+class TestIntermediatePhase3State:
+    """Phase 3.5 sanity probe: aggregator still flat-keys by leaf until Phase 4.
+
+    This test class pins the observable intermediate state at end-of-Phase-3:
+    the parser emits depth-3 records with full ``agent_path`` tuples, but the
+    aggregator has NOT yet been updated — it still reads ``m.agent_type``
+    (the backward-compat property returning ``agent_path[-1]``), so
+    ``by_agent`` keys are bare leaf names, not delimited path strings.
+
+    The probe makes this "leaf-flatten still active" state into an explicit,
+    asserted invariant so any accidental Phase-4 behavior landing in Phase-3
+    code surfaces immediately as a failure here.
+
+    # This test is rewritten in Phase 4 task 4.1 to assert path-keyed
+    # behavior.  If you are reading this comment AFTER Phase 4 merged,
+    # delete this whole test class.
+    """
+
+    def test_depth_three_flattens_to_leaf_until_phase_4(self, nested_session_dir: Path):
+        """Depth-3 messages bucket under the bare leaf key before Phase 4.
+
+        The nested_session_dir fixture has:
+        - depth 1: general-purpose, 100 input + 50 output = 150 total
+        - depth 2: project-planner, 200 input + 100 output = 300 total
+        - depth 3: Explore (PascalCase), 400 input + 200 output = 600 total
+
+        Before Phase 4, the aggregator flattens agent_path to the leaf via
+        the agent_type property, so ``by_agent`` contains bare leaf names.
+        """
+        sessions = parse_sessions(nested_session_dir)
+        result = aggregate(sessions)
+
+        # The leaf key exists — aggregator is reading agent_type (leaf).
+        assert "Explore" in result.by_agent, (
+            "Expected bare leaf key 'Explore' from agent_type property"
+        )
+
+        # The path-keyed form does NOT yet exist — Phase 4 hasn't landed.
+        assert "general-purpose→project-planner→Explore" not in result.by_agent, (
+            "Path-keyed form must not appear until Phase 4 aggregator lands"
+        )
+
+        # Depth-3 token totals are credited to the 'Explore' bucket.
+        # depth-3 fixture: 400 input + 200 output = 600 total tokens.
+        assert result.by_agent["Explore"]["total_tokens"] == 600, (
+            "All depth-3 tokens must be in the 'Explore' bucket"
+        )
