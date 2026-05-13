@@ -13,6 +13,30 @@ from claude_usage.models import (
     SkillInvokedEvent,
 )
 
+#: Delimiter joining agent_path segments into a by_agent key string.
+#: U+2192 RIGHTWARDS ARROW — round-trips through json.dumps as the
+#: JSON Unicode escape ``→`` (decoded by JSON.parse client-side).
+AGENT_PATH_SEPARATOR = "→"
+
+
+def _path_key(msg: MessageRecord) -> str:
+    """Return the delimited path-string key for a message's agent_path.
+
+    Joins ``msg.agent_path`` with ``AGENT_PATH_SEPARATOR``.  For depth-1
+    records the result is a bare single-segment string identical to the old
+    ``agent_type`` value, preserving backward compatibility.
+
+    Args:
+        msg: The message record whose ``agent_path`` is joined.
+
+    Returns:
+        Delimited path string, e.g. ``"general-purpose→project-planner→Explore"``.
+        Returns the empty string if ``agent_path`` is empty (should not occur
+        for records produced by the current parser, but guards against stale
+        records with the default empty tuple).
+    """
+    return AGENT_PATH_SEPARATOR.join(msg.agent_path)
+
 
 @dataclass
 class AggregateResult:
@@ -89,7 +113,22 @@ def aggregate(
             for m in session_messages:
                 model_tokens[m.model_short] += m.total_tokens
 
-            agents_in_session = sorted(set(m.agent_type for m in session_messages))
+            # Emit only the deepest path-key per chain so the dashboard JS
+            # does not double-count when apportioning
+            # s.total_tokens / s.agents.length.
+            # An entry k is a leaf iff no other entry starts with
+            # k + AGENT_PATH_SEPARATOR (i.e. k is not a proper prefix of
+            # any other observed path).
+            all_path_keys = {_path_key(m) for m in session_messages}
+            leaf_path_keys = {
+                k
+                for k in all_path_keys
+                if not any(
+                    other != k and other.startswith(k + AGENT_PATH_SEPARATOR)
+                    for other in all_path_keys
+                )
+            }
+            agents_in_session = sorted(leaf_path_keys)
 
             result.sessions.append(
                 {
@@ -118,7 +157,7 @@ def aggregate(
         _add_tokens(result.by_model[model], msg)
 
     for msg in filtered_messages:
-        agent = msg.agent_type
+        agent = _path_key(msg)
         if agent not in result.by_agent:
             result.by_agent[agent] = {}
         _add_tokens(result.by_agent[agent], msg)
