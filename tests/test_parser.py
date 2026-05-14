@@ -425,8 +425,8 @@ class TestNestedSubagents:
         assert len(session.messages) == 1
 
     def test_pathological_depth_cap(self, pathological_depth_session_dir: Path):
-        """12-deep chain triggers depth-cap warning; no path exceeds depth 10."""
-        with pytest.warns(UserWarning, match=r"depth cap"):
+        """12-deep chain triggers path-length-cap warning; no path exceeds 10."""
+        with pytest.warns(UserWarning, match=r"path length cap"):
             sessions = parse_sessions(pathological_depth_session_dir)
         assert len(sessions) == 1
         for msg in sessions[0].messages:
@@ -462,7 +462,7 @@ class TestNestedSubagents:
         Two assertions:
         (a) Cycle-specific warning fires (distinct from depth-cap warning).
         (b) Cycled segment appears at most once, and max path depth is <= 3
-            (well below _MAX_AGENT_DEPTH = 10, proving the cap didn't fire).
+            (well below _MAX_AGENT_PATH_LENGTH = 10, proving the cap didn't fire).
         """
         with pytest.warns(UserWarning, match=r"Subagent directory cycle detected"):
             sessions = parse_sessions(symlink_cycle_session_dir)
@@ -478,12 +478,12 @@ class TestNestedSubagents:
     def test_depth_cap_fires_when_visited_set_misses(
         self, pathological_depth_session_dir: Path
     ):
-        """Non-cyclic 12-deep chain triggers depth-cap (not cycle) warning.
+        """Non-cyclic 12-deep chain triggers path-length-cap (not cycle) warning.
 
         Distinct message text from the cycle warning proves the two defenses
         are independently observable.
         """
-        with pytest.warns(UserWarning, match=r"depth cap"):
+        with pytest.warns(UserWarning, match=r"path length cap"):
             sessions = parse_sessions(pathological_depth_session_dir)
         assert len(sessions) == 1
         # No path should exceed the cap
@@ -617,7 +617,7 @@ class TestOSErrorDefense:
         msg = caught_messages[0]
         # Must not match the other two warning types
         assert "cycle detected" not in msg
-        assert "depth cap" not in msg
+        assert "path length cap" not in msg
         # Must contain the OSError-specific text
         assert "unreadable subagent directory" in msg
 
@@ -826,3 +826,137 @@ class TestOSErrorDefense:
         ok_session = next(s for s in sessions if s.session_id == ok_session_id)
         assert len(ok_session.messages) == 1
         assert ok_session.messages[0].input_tokens == 77
+
+
+class TestEmptyAgentTypeDefense:
+    """Tests for empty/null agentType defense in _parse_subagents_recursive.
+
+    Covers issue #45 Item 3: ``meta.get("agentType") or "unknown"`` must
+    handle missing-key, ``None``, and empty-string ``""`` uniformly,
+    producing ``agent_type == "unknown"`` in all three cases.
+    """
+
+    def _make_session_with_subagent_meta(
+        self, tmp_path: Path, agent_type_value: object
+    ) -> Path:
+        """Build a minimal session fixture with one subagent whose meta has
+        the given agentType value (or omits the key when value is a sentinel).
+
+        Args:
+            tmp_path: Pytest-provided temporary directory.
+            agent_type_value: The value to write for ``agentType`` in the
+                subagent's ``*.meta.json``.  Pass the string ``"__omit__"``
+                to omit the key entirely.
+
+        Returns:
+            Path to the data directory suitable for ``parse_sessions()``.
+        """
+        session_id = "sess-empty-agent-type"
+        project_dir = tmp_path / "projects" / "proj"
+        project_dir.mkdir(parents=True)
+        jsonl = project_dir / f"{session_id}.jsonl"
+
+        root_lines = [
+            {
+                "type": "agent-setting",
+                "agentSetting": "general-purpose",
+                "sessionId": session_id,
+            },
+            {
+                "type": "assistant",
+                "timestamp": "2026-05-14T10:00:00.000Z",
+                "sessionId": session_id,
+                "message": {
+                    "model": "claude-opus-4-6",
+                    "role": "assistant",
+                    "content": [],
+                    "usage": {
+                        "input_tokens": 10,
+                        "output_tokens": 5,
+                        "cache_read_input_tokens": 0,
+                        "cache_creation_input_tokens": 0,
+                    },
+                },
+            },
+        ]
+        jsonl.write_text(
+            "\n".join(json.dumps(line) for line in root_lines),
+            encoding="utf-8",
+        )
+
+        subagent_dir = project_dir / session_id / "subagents"
+        subagent_dir.mkdir(parents=True)
+
+        if agent_type_value == "__omit__":
+            meta: dict = {}
+        else:
+            meta = {"agentType": agent_type_value}
+        (subagent_dir / "agent-ea.meta.json").write_text(
+            json.dumps(meta), encoding="utf-8"
+        )
+
+        subagent_lines = [
+            {
+                "type": "assistant",
+                "timestamp": "2026-05-14T10:01:00.000Z",
+                "sessionId": session_id,
+                "message": {
+                    "model": "claude-sonnet-4-6",
+                    "role": "assistant",
+                    "content": [],
+                    "usage": {
+                        "input_tokens": 20,
+                        "output_tokens": 10,
+                        "cache_read_input_tokens": 0,
+                        "cache_creation_input_tokens": 0,
+                    },
+                },
+            },
+        ]
+        (subagent_dir / "agent-ea.jsonl").write_text(
+            "\n".join(json.dumps(line) for line in subagent_lines),
+            encoding="utf-8",
+        )
+        return tmp_path
+
+    def test_empty_string_agent_type_defaults_to_unknown(self, tmp_path: Path) -> None:
+        """agentType ``""`` in metadata.json must parse as ``"unknown"``.
+
+        An empty string passes through ``meta.get("agentType", "unknown")``
+        unchanged, producing an empty-string leaf in ``agent_path``.  The
+        ``or "unknown"`` fix must short-circuit the empty string.
+        """
+        data_dir = self._make_session_with_subagent_meta(tmp_path, "")
+        sessions = parse_sessions(data_dir)
+        assert len(sessions) == 1
+        subagent_msgs = [m for m in sessions[0].messages if len(m.agent_path) == 2]
+        assert len(subagent_msgs) >= 1
+        for msg in subagent_msgs:
+            assert msg.agent_type == "unknown", (
+                f"Expected agent_type='unknown' for empty agentType, "
+                f"got {msg.agent_type!r}"
+            )
+            assert (
+                msg.agent_path[-1] == "unknown"
+            ), f"Expected agent_path leaf='unknown', got {msg.agent_path!r}"
+
+    def test_null_agent_type_defaults_to_unknown(self, tmp_path: Path) -> None:
+        """agentType ``null`` in metadata.json must parse as ``"unknown"``.
+
+        JSON ``null`` deserialises to Python ``None``.
+        ``meta.get("agentType", "unknown")`` returns ``None`` (key present),
+        which must be caught by the ``or "unknown"`` guard.
+        """
+        data_dir = self._make_session_with_subagent_meta(tmp_path, None)
+        sessions = parse_sessions(data_dir)
+        assert len(sessions) == 1
+        subagent_msgs = [m for m in sessions[0].messages if len(m.agent_path) == 2]
+        assert len(subagent_msgs) >= 1
+        for msg in subagent_msgs:
+            assert msg.agent_type == "unknown", (
+                f"Expected agent_type='unknown' for null agentType, "
+                f"got {msg.agent_type!r}"
+            )
+            assert (
+                msg.agent_path[-1] == "unknown"
+            ), f"Expected agent_path leaf='unknown', got {msg.agent_path!r}"

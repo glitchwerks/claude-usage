@@ -306,7 +306,7 @@ def nested_session_dir(tmp_path: Path) -> Path:
 
 @pytest.fixture
 def pathological_depth_session_dir(tmp_path: Path) -> Path:
-    """Create a 12-level-deep subagent chain to exercise _MAX_AGENT_DEPTH = 10.
+    """Create a 12-level-deep subagent chain to exercise _MAX_AGENT_PATH_LENGTH = 10.
 
     Layout::
 

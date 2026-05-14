@@ -13,7 +13,7 @@ from claude_usage.constants import (
 )
 from claude_usage.models import MessageRecord, SessionRecord
 
-_MAX_AGENT_DEPTH = 10
+_MAX_AGENT_PATH_LENGTH = 10
 
 
 def decode_project_hash(hash_name: str) -> str:
@@ -129,6 +129,8 @@ def _parse_subagents_recursive(
     visited: set[Path],
     depth: int,
     overflow_emitted: list[bool],
+    cycle_emitted: list[bool],
+    oserror_emitted: list[bool],
 ) -> list[MessageRecord]:
     """Walk <parent_session_dir>/subagents/ and recurse into each sub-agent.
 
@@ -138,13 +140,18 @@ def _parse_subagents_recursive(
     directory.
 
     Contract:
-        - ``depth > _MAX_AGENT_DEPTH``: return ``[]``. Emit one
-          ``UserWarning`` per session (de-duped via ``overflow_emitted[0]``).
+        - ``len(parent_path) >= _MAX_AGENT_PATH_LENGTH``: return ``[]``.
+          Emit one ``UserWarning`` per session (de-duped via
+          ``overflow_emitted[0]``).
         - ``parent_session_dir.resolve()`` already in ``visited``: emit a
-          cycle ``UserWarning`` and return ``[]``.
-        - For each ``*.meta.json``: read ``agentType``, sanitize it, append
-          to accumulator, build child path, parse matching JSONL, and
-          recurse into ``<parent_session_dir>/subagents/<agent_id>/``.
+          cycle ``UserWarning`` (de-duped via ``cycle_emitted[0]``) and
+          return ``[]``.
+        - ``OSError`` from ``resolve()``: emit a warning (de-duped via
+          ``oserror_emitted[0]``) and return ``[]``.
+        - For each ``*.meta.json``: read ``agentType`` (empty string and
+          ``None`` both default to ``"unknown"``), sanitize it, append to
+          accumulator, build child path, parse matching JSONL, and recurse
+          into ``<parent_session_dir>/subagents/<agent_id>/``.
         - Missing JSONL: silently skipped.
         - Empty or non-existent ``subagents/``: returns ``[]``.
 
@@ -159,19 +166,25 @@ def _parse_subagents_recursive(
             infinite recursion through symlink or junction cycles.
         depth: Current recursion depth (1 = first sub-agent level under
             the root session).
-        overflow_emitted: Single-element list used as a mutable flag; set to
-            ``True`` once the depth-cap warning has been emitted so it fires
+        overflow_emitted: Single-element list used as a mutable flag; set
+            to ``True`` once the path-length-cap warning has been emitted so
+            it fires at most once per ``_parse_session`` call.
+        cycle_emitted: Single-element list used as a mutable flag; set to
+            ``True`` once the cycle warning has been emitted so it fires at
+            most once per ``_parse_session`` call.
+        oserror_emitted: Single-element list used as a mutable flag; set to
+            ``True`` once the OSError warning has been emitted so it fires
             at most once per ``_parse_session`` call.
 
     Returns:
         Flat list of ``MessageRecord`` objects produced at this level and
         all reachable descendant levels.
     """
-    if depth > _MAX_AGENT_DEPTH - 1:
+    if len(parent_path) >= _MAX_AGENT_PATH_LENGTH:
         if not overflow_emitted[0]:
             warnings.warn(
-                f"Subagent recursion depth cap ({_MAX_AGENT_DEPTH}) exceeded"
-                f" at {parent_session_dir}",
+                f"Subagent path length cap ({_MAX_AGENT_PATH_LENGTH})"
+                f" exceeded at {parent_session_dir}",
                 UserWarning,
                 stacklevel=2,
             )
@@ -186,22 +199,26 @@ def _parse_subagents_recursive(
     # path.  On POSIX, symlinks are fully resolved; on Windows, junctions
     # may not be normalized (fallback to depth cap).
     # OSError can occur on broken symlinks, revoked permissions, or
-    # other filesystem faults — warn and skip rather than crash.
+    # other filesystem faults — warn once and skip rather than crash.
     try:
         real_dir = subagent_dir.resolve()
     except OSError as exc:
-        warnings.warn(
-            f"Skipping unreadable subagent directory {subagent_dir}: {exc}",
-            UserWarning,
-            stacklevel=2,
-        )
+        if not oserror_emitted[0]:
+            warnings.warn(
+                f"Skipping unreadable subagent directory {subagent_dir}: {exc}",
+                UserWarning,
+                stacklevel=2,
+            )
+            oserror_emitted[0] = True
         return []
     if real_dir in visited:
-        warnings.warn(
-            f"Subagent directory cycle detected: {real_dir}",
-            UserWarning,
-            stacklevel=2,
-        )
+        if not cycle_emitted[0]:
+            warnings.warn(
+                f"Subagent directory cycle detected: {real_dir}",
+                UserWarning,
+                stacklevel=2,
+            )
+            cycle_emitted[0] = True
         return []
     visited.add(real_dir)
 
@@ -209,7 +226,7 @@ def _parse_subagents_recursive(
     for meta_path in subagent_dir.glob("*.meta.json"):
         try:
             meta = json.loads(meta_path.read_text(encoding="utf-8"))
-            raw_agent_type = meta.get("agentType", "unknown")
+            raw_agent_type = meta.get("agentType") or "unknown"
         except (json.JSONDecodeError, OSError):
             raw_agent_type = "unknown"
 
@@ -240,6 +257,8 @@ def _parse_subagents_recursive(
                 visited=visited,
                 depth=depth + 1,
                 overflow_emitted=overflow_emitted,
+                cycle_emitted=cycle_emitted,
+                oserror_emitted=oserror_emitted,
             )
         )
 
@@ -319,6 +338,8 @@ def _parse_session(jsonl_path: Path, project_name: str) -> SessionRecord | None:
     subagent_types: list[str] = []
     visited: set[Path] = set()
     overflow_emitted: list[bool] = [False]
+    cycle_emitted: list[bool] = [False]
+    oserror_emitted: list[bool] = [False]
     messages.extend(
         _parse_subagents_recursive(
             parent_session_dir=jsonl_path.parent / session_id,
@@ -327,6 +348,8 @@ def _parse_session(jsonl_path: Path, project_name: str) -> SessionRecord | None:
             visited=visited,
             depth=1,
             overflow_emitted=overflow_emitted,
+            cycle_emitted=cycle_emitted,
+            oserror_emitted=oserror_emitted,
         )
     )
 
