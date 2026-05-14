@@ -21,6 +21,13 @@ SNAPSHOT_FILE = (
     Path(__file__).parent / "fixtures" / "dashboard_snapshot_pre_refactor.json"
 )
 
+# Repo root resolved from this file's location, so pytest invoked from any
+# directory (main checkout, worktree, /tmp) uses the correct tree.  Without an
+# explicit cwd=, the subprocess inherits the test-runner's CWD and can silently
+# pass when invoked from a sibling checkout that happens to have the same
+# module importable but different fixture data.
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+
 
 def test_existing_dashboard_unchanged() -> None:
     """dashboard --format json output must be byte-identical to pre-refactor.
@@ -51,6 +58,9 @@ def test_existing_dashboard_unchanged() -> None:
         ],
         capture_output=True,
         text=True,
+        # Explicit cwd ensures the subprocess resolves sys.path against the
+        # correct repo root regardless of where pytest was invoked from.
+        cwd=str(_REPO_ROOT),
     )
     assert (
         result.returncode == 0
