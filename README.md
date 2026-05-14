@@ -161,7 +161,7 @@ complete root-to-leaf chain rather than just the immediate leaf.
   of the other. This rule preserves the dashboard JS's per-agent token
   apportionment, which divides session totals by `s.agents.length`.
 
-- **Depth limit.** The parser enforces `_MAX_AGENT_DEPTH = 10` segments. If
+- **Depth limit.** The parser enforces `_MAX_AGENT_PATH_LENGTH = 10` segments. If
   a chain exceeds this limit the parser emits a `UserWarning` and stops
   descending; deeper messages are bucketed under the last walked ancestor.
   On Windows, junction-based cycles are caught by this same cap rather than
