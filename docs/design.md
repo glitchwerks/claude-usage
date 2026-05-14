@@ -79,10 +79,93 @@ claude-usage/
 
 ### Module Responsibilities
 
-**`models.py`** — Data classes representing parsed data:
-- `MessageRecord`: timestamp, model, `agent_path: tuple[str, ...]` (root-to-leaf chain, e.g. `("general-purpose", "project-planner", "Explore")`), `agent_type: str` (stored field, parallel to `agent_path`; parser-enforced invariant: `agent_type == agent_path[-1]` when `agent_path` is non-empty — the dataclass does not derive this automatically), skill (optional), input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens.
-- `SessionRecord`: session_id, project, start_time, root_agent, messages (list of MessageRecord), subagents (list of agent types)
-- Total tokens computed as sum of all four token fields
+**`models.py`** — Data classes representing parsed data.
+
+#### MessageRecord
+
+A single assistant message attributed to a specific agent in the invocation tree.
+Each record carries the full root-to-leaf path of the agent that produced it, plus
+independent token-count fields for the four billing buckets Claude Code tracks.
+
+**Fields:**
+
+- `timestamp: datetime` — when the assistant message was produced.
+- `model: str` — full model ID string (e.g. `"claude-opus-4-6"`).
+- `agent_type: str` — leaf agent name (e.g. `"general-purpose"`). Stored as a plain
+  field; not derived from `agent_path`. See the invariant below.
+- `agent_path: tuple[str, ...]` — full ancestry tuple from root to leaf (e.g.
+  `("general-purpose", "project-planner", "Explore")`). Defaults to the empty
+  tuple for records that pre-date nested attribution.
+- `skill: str | None` — skill name invoked in this message, or `None`.
+- `input_tokens: int` — prompt token count.
+- `output_tokens: int` — completion token count.
+- `cache_read_tokens: int` — tokens served from the prompt cache.
+- `cache_creation_tokens: int` — tokens written to the prompt cache.
+- `total_tokens` (property) — sum of all four token fields.
+
+**Invariants:**
+
+- `agent_type == agent_path[-1]` when `agent_path` is non-empty. The dataclass does
+  not enforce this automatically; it is the parser's responsibility at construction
+  time (`claude_usage/parser.py`, `_parse_jsonl_messages` and
+  `_parse_subagents_recursive`).
+- `agent_path` segments are sanitized: no segment may contain the path separator
+  U+2192 `→`. See Sanitization below.
+
+**Aggregation contract:**
+
+The aggregator (`claude_usage/aggregator.py`) keys `by_agent` on the full path string
+`AGENT_PATH_SEPARATOR.join(agent_path)`, e.g. `"general-purpose→project-planner→Explore"`.
+Keys are created only for paths with direct messages — there are no implicit
+intermediate keys. A path `"general-purpose→project-planner"` does not appear in
+`by_agent` unless the `project-planner` agent itself produced messages (not just its
+descendants). The per-session `agents` list (used by the dashboard JS for token
+apportionment) contains only the deepest-leaf path per chain: a path key `k` is
+included only when no other key in the same session starts with
+`k + AGENT_PATH_SEPARATOR`. Sibling chains that share a leaf name but differ in
+their ancestors are both kept, as neither is a prefix of the other.
+
+**Sanitization:**
+
+The path separator `→` (U+2192 RIGHTWARDS ARROW, defined as `AGENT_PATH_SEPARATOR`
+in `claude_usage/constants.py`) must not appear inside any `agent_path` segment.
+If an agent name read from a `.meta.json` file contains this character,
+`_sanitize_agent_name` in `claude_usage/parser.py` replaces it with `﹖`
+(U+FE56 SMALL QUESTION MARK, defined as `SANITIZED_SEPARATOR_REPLACEMENT`) and
+emits a `UserWarning`. The sanitized name is used throughout parse, aggregation,
+and the dashboard key.
+
+**Defenses:**
+
+- **Depth cap** — `_MAX_AGENT_PATH_LENGTH = 10` in `claude_usage/parser.py`. When
+  `len(parent_path) >= 10`, the recursive walk stops and a `UserWarning` is emitted.
+  Maximum path length is 10 segments (root agent + up to 9 nested sub-agent levels).
+- **Cycle detection** — a `visited: set[Path]` accumulator short-circuits
+  symlink/junction cycles by comparing resolved real paths. On Windows, junctions
+  may not resolve correctly; the depth cap provides a second-line defense.
+- **OSError on resolve()** — broken symlinks and revoked permissions raise `OSError`
+  on `Path.resolve()`; the parser catches this, emits a warning, and skips the
+  affected branch.
+
+All three warnings are de-duplicated per `_parse_session` call: each fires at most
+once regardless of how many times the condition is hit within a single session.
+
+**Examples:**
+
+```python
+# Depth-1 (root only — equivalent to the pre-PR42 flat model)
+MessageRecord(agent_type="general-purpose", agent_path=("general-purpose",), ...)
+
+# Depth-2 (one sub-agent)
+MessageRecord(agent_type="project-planner", agent_path=("general-purpose", "project-planner"), ...)
+
+# Depth-3 (two levels of sub-agent)
+MessageRecord(agent_type="Explore", agent_path=("general-purpose", "project-planner", "Explore"), ...)
+```
+
+**`SessionRecord`** — session_id, project, start_time, root_agent, messages (list of
+MessageRecord), subagents (list of agent types). Total tokens computed as sum of all
+four token fields across all messages.
 
 **`parser.py`** — Reads the filesystem and produces `SessionRecord` objects:
 - Walks `~/.claude/projects/` to find session JSONL files
