@@ -266,6 +266,69 @@ class TestSubagentModelAttribution:
         )
 
 
+class TestSeparatorSanitizationE2E:
+    """End-to-end guard: separator in agent name is sanitized through aggregation.
+
+    Item 7 of issue #45 — parser-level sanitization is unit-tested in
+    ``tests/test_parser.py``; this integration test proves the sanitized
+    character survives all the way through ``parse_sessions → aggregate``
+    so the ``by_agent`` keys are safe for downstream consumers.
+    """
+
+    def test_separator_in_agent_name_sanitized_through_aggregation(
+        self, separator_in_name_session_dir: Path
+    ) -> None:
+        """Separator U+2192 in agentType is replaced by U+FE56 in by_agent keys.
+
+        The fixture contains a subagent with ``agentType: "weird→name"`` where
+        ``→`` (U+2192) is the path-separator character.  After the full
+        ``parse_sessions → aggregate`` pipeline the resulting ``by_agent``
+        dict must:
+
+        1.  Contain the sanitized key
+            ``"general-purpose→weird﹖name"`` (U+2192 as separator,
+            U+FE56 replacing the original ``→`` inside the segment name).
+        2.  NOT contain any key with a bare stray ``→`` inside a segment
+            name (i.e. no ``"weird→name"`` substring in any key).
+
+        This is the integration counterpart of the unit test in
+        ``test_parser.py::TestSanitizeAgentName`` which only exercises
+        ``_sanitize_agent_name`` in isolation.
+        """
+        sessions = parse_sessions(separator_in_name_session_dir)
+        result = aggregate(sessions)
+
+        # U+2192 RIGHTWARDS ARROW (path separator)
+        sep = "→"
+        # U+FE56 SMALL QUESTION MARK (sanitized replacement)
+        replacement = "﹖"
+
+        sanitized_key = f"general-purpose{sep}weird{replacement}name"
+
+        assert sanitized_key in result.by_agent, (
+            f"Sanitized key {sanitized_key!r} must appear in by_agent. "
+            f"Keys present: {sorted(result.by_agent)}"
+        )
+
+        # No key should contain a raw U+2192 *inside* a segment name.
+        # The separator between segments is expected (U+2192), but the
+        # sanitizer must have replaced any U+2192 within segment text.
+        for key in result.by_agent:
+            segments = key.split(sep)
+            for segment in segments:
+                assert replacement not in segment or sep not in segment, (
+                    f"Segment {segment!r} in key {key!r} contains both the "
+                    f"separator and the replacement — sanitization may be "
+                    f"double-replacing."
+                )
+            # The segment that was originally "weird→name" must not still
+            # contain the raw separator character.
+            assert "weird→name" not in key, (
+                f"Key {key!r} contains the unsanitized segment 'weird→name' — "
+                f"sanitization did not propagate through aggregation."
+            )
+
+
 class TestChartLabelSkip:
     """Regression test for issue #7: category-axis labels skipped on Tokens by Agent
     and Skill Invocations charts.

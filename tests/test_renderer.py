@@ -5,7 +5,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from claude_usage.aggregator import AggregateResult
+from claude_usage.aggregator import AggregateResult, aggregate
+from claude_usage.parser import parse_sessions
 from claude_usage.renderer import render
 
 # U+2192 RIGHTWARDS ARROW — the candidate separator for nested agent path keys.
@@ -216,3 +217,65 @@ def test_path_keys_render_through(tmp_path: Path) -> None:
     assert (
         data_obj["by_agent"][path_key]["total_tokens"] == 100
     ), "Round-tripped by_agent entry must preserve the total_tokens value."
+
+
+def test_real_data_depth3_renders_correct_by_agent_values(
+    nested_session_dir: Path, tmp_path: Path
+) -> None:
+    """Real depth-3 aggregator output renders correct by_agent values for leaf.
+
+    Plan Task 4.3 regression — ``test_path_keys_render_through`` uses a
+    synthetic ``AggregateResult`` built directly.  This test runs the full
+    ``parse_sessions(nested_session_dir) → aggregate → render`` pipeline and
+    verifies the embedded ``DATA.by_agent`` entry for the depth-3 leaf key
+    ``"general-purpose→project-planner→Explore"`` matches the values the
+    aggregator actually computed.
+
+    Expected values (derived from the ``nested_session_dir`` fixture in
+    ``conftest.py`` and confirmed by
+    ``TestAggregateByAgentPath.test_depth_three_uses_full_path_key``):
+
+    - ``total_tokens``:  600  (400 input + 200 output for the Explore agent)
+    - ``primary_model``: ``"haiku"``  (``claude-haiku-4-5`` → short name)
+    - ``session_count``: 1
+
+    This is a permanent regression gate: if a future change causes real
+    aggregator output to be embedded incorrectly in the HTML (e.g. the
+    renderer serialises a stale or partial result), this test will fail
+    independently of the synthetic-data guard in
+    ``test_path_keys_render_through``.
+    """
+    sessions = parse_sessions(nested_session_dir)
+    result = aggregate(sessions)
+
+    output = tmp_path / "dashboard-depth3.html"
+    render(result, output_path=output, open_browser=False)
+    html = output.read_text(encoding="utf-8")
+
+    # Extract the embedded DATA JSON payload the same way test_path_keys_render_through
+    # does — raw_decode handles the → JSON-escape transparently.
+    data_line_marker = "const DATA = "
+    data_start = html.index(data_line_marker) + len(data_line_marker)
+    decoder = json.JSONDecoder()
+    data_obj, _ = decoder.raw_decode(html, data_start)
+
+    leaf_key = "general-purpose→project-planner→Explore"
+
+    assert leaf_key in data_obj["by_agent"], (
+        f"DATA.by_agent must contain the depth-3 leaf key {leaf_key!r}. "
+        f"Keys present: {sorted(data_obj['by_agent'])}"
+    )
+
+    entry = data_obj["by_agent"][leaf_key]
+
+    assert entry["total_tokens"] == 600, (
+        f"Depth-3 leaf total_tokens must be 600 (400 input + 200 output). "
+        f"Got: {entry['total_tokens']!r}"
+    )
+    assert entry["primary_model"] == "haiku", (
+        f"Depth-3 leaf primary_model must be 'haiku' (claude-haiku-4-5). "
+        f"Got: {entry['primary_model']!r}"
+    )
+    assert entry["session_count"] == 1, (
+        f"Depth-3 leaf session_count must be 1. " f"Got: {entry['session_count']!r}"
+    )
