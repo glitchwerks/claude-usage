@@ -268,6 +268,13 @@ class TestAggregateByAgentPath:
         (which the old code emitted via ``m.agent_type``) must NOT appear;
         the full path-key ``"general-purpose→project-planner→Explore"`` is
         the only correct form for those depth-3 messages.
+
+        Similarly, the bare key ``"project-planner"`` must not appear.  In
+        the ``nested_session_dir`` fixture ``project-planner`` has its own
+        direct messages, so it DOES produce the path-keyed entry
+        ``"general-purpose→project-planner"`` — but it must NOT appear under
+        the old flat ``"project-planner"`` key.  This asserts that the
+        path-keyed shape applies to every depth, not only the deepest leaf.
         """
         sessions = parse_sessions(nested_session_dir)
         result = aggregate(sessions)
@@ -276,6 +283,14 @@ class TestAggregateByAgentPath:
         assert "Explore" not in result.by_agent, (
             "Bare leaf key 'Explore' must NOT appear in by_agent after Phase 4; "
             "only the full path key 'general-purpose→project-planner→Explore' "
+            "is valid"
+        )
+        # "project-planner" (bare depth-2 name) must also not appear as a
+        # flat key — the path-keyed form is the only valid shape.
+        assert "project-planner" not in result.by_agent, (
+            "Bare depth-2 key 'project-planner' must NOT appear in by_agent; "
+            f"only the full path key "
+            f"'general-purpose{AGENT_PATH_SEPARATOR}project-planner' "
             "is valid"
         )
 

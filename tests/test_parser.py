@@ -440,7 +440,14 @@ class TestNestedSubagents:
         ]
         assert len(explore_msgs) >= 1
         assert explore_msgs[0].agent_path[-1] == "Explore"
-        # No sanitization warning should fire for a plain PascalCase name
+
+    def test_well_formed_tree_emits_no_warnings(self, nested_session_dir: Path):
+        """A well-formed nested session tree must not emit any UserWarnings.
+
+        Specifically, no cycle, depth-cap, OSError, or sanitization warning
+        should fire when parsing a tree whose agent names are valid and whose
+        depth is within the path-length cap.
+        """
         with warnings.catch_warnings():
             warnings.simplefilter("error", UserWarning)
             _ = parse_sessions(nested_session_dir)
