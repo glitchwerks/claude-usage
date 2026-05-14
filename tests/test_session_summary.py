@@ -21,6 +21,11 @@ from claude_usage.cli.session_summary import (
     render_text,
 )
 
+# Repo root resolved from this file's location so subprocess.run calls that
+# pass a relative --path fixture work correctly regardless of the CWD from
+# which pytest is invoked (main checkout, worktree, /tmp, etc.).
+_REPO_ROOT = _Path(__file__).resolve().parent.parent
+
 
 def _parse_fixture(fixture_path: _Path) -> list[dict]:
     """Read and parse a JSONL fixture into a list of dicts.
@@ -1359,6 +1364,9 @@ class TestExitNoUserTurns:
             ],
             capture_output=True,
             text=True,
+            # Explicit cwd ensures the relative --path fixture resolves
+            # correctly regardless of where pytest was invoked from.
+            cwd=str(_REPO_ROOT),
         )
         assert result.returncode == 2
         assert result.stdout == ""
@@ -1548,6 +1556,9 @@ class TestStdoutStderrDiscipline:
             ],
             capture_output=True,
             text=True,
+            # Explicit cwd ensures the relative --path fixture resolves
+            # correctly regardless of where pytest was invoked from.
+            cwd=str(_REPO_ROOT),
         )
         assert result.returncode == 0
         # Must parse cleanly — no leading/trailing non-JSON text
