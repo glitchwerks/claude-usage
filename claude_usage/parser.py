@@ -7,10 +7,13 @@ import warnings
 from datetime import datetime, timezone
 from pathlib import Path
 
+from claude_usage.constants import (
+    AGENT_PATH_SEPARATOR as _PATH_SEPARATOR,
+    SANITIZED_SEPARATOR_REPLACEMENT as _SANITIZED_SEPARATOR_REPLACEMENT,
+)
 from claude_usage.models import MessageRecord, SessionRecord
 
 _MAX_AGENT_DEPTH = 10
-_PATH_SEPARATOR = "→"  # U+2192 RIGHTWARDS ARROW
 
 
 def decode_project_hash(hash_name: str) -> str:
@@ -109,7 +112,7 @@ def _sanitize_agent_name(name: str) -> str:
         Sanitized agent name with all ``→`` replaced by ``﹖``.
     """
     if _PATH_SEPARATOR in name:
-        sanitized = name.replace(_PATH_SEPARATOR, "﹖")
+        sanitized = name.replace(_PATH_SEPARATOR, _SANITIZED_SEPARATOR_REPLACEMENT)
         warnings.warn(
             f"Agent name contains path separator; sanitized: {name!r} -> {sanitized!r}",
             UserWarning,
