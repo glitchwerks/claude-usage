@@ -6,6 +6,7 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 
+from claude_usage.constants import AGENT_PATH_SEPARATOR as _AGENT_PATH_SEPARATOR
 from claude_usage.models import (
     MessageRecord,
     SessionRecord,
@@ -14,9 +15,10 @@ from claude_usage.models import (
 )
 
 #: Delimiter joining agent_path segments into a by_agent key string.
-#: U+2192 RIGHTWARDS ARROW — round-trips through json.dumps as the
-#: JSON Unicode escape ``→`` (decoded by JSON.parse client-side).
-AGENT_PATH_SEPARATOR = "→"
+#: Sourced from :mod:`claude_usage.constants`; re-exported here so
+#: existing callers that import this name from ``aggregator`` continue
+#: to work unchanged.
+AGENT_PATH_SEPARATOR: str = _AGENT_PATH_SEPARATOR
 
 
 def _path_key(msg: MessageRecord) -> str:
