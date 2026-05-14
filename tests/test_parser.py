@@ -489,3 +489,340 @@ class TestNestedSubagents:
         # No path should exceed the cap
         for msg in sessions[0].messages:
             assert len(msg.agent_path) <= 10
+
+
+class TestOSErrorDefense:
+    """Tests for OSError handling in _parse_subagents_recursive.
+
+    Covers AC #1-3 from issue #43: the parser emits a distinct
+    UserWarning when ``Path.resolve`` raises ``OSError``, continues
+    parsing other subagent directories, and returns records for healthy
+    sessions alongside the one with the unreadable subagent directory.
+    """
+
+    def test_oserror_on_resolve_emits_distinct_warning(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """OSError from resolve() emits a warning distinct from cycle/depth-cap.
+
+        AC #1: the warning message must be different from the cycle
+        warning ("Subagent directory cycle detected") and the depth-cap
+        warning ("depth cap").
+        """
+        session_id = "sess-oserror"
+        project_dir = tmp_path / "projects" / "proj"
+        project_dir.mkdir(parents=True)
+        jsonl = project_dir / f"{session_id}.jsonl"
+
+        lines = [
+            {
+                "type": "agent-setting",
+                "agentSetting": "general-purpose",
+                "sessionId": session_id,
+            },
+            {
+                "type": "assistant",
+                "timestamp": "2026-05-14T10:00:00.000Z",
+                "sessionId": session_id,
+                "message": {
+                    "model": "claude-opus-4-6",
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": "hi"}],
+                    "usage": {
+                        "input_tokens": 10,
+                        "output_tokens": 5,
+                        "cache_read_input_tokens": 0,
+                        "cache_creation_input_tokens": 0,
+                    },
+                },
+            },
+        ]
+        jsonl.write_text(
+            "\n".join(json.dumps(line) for line in lines),
+            encoding="utf-8",
+        )
+
+        subagent_dir = project_dir / session_id / "subagents"
+        subagent_dir.mkdir(parents=True)
+        (subagent_dir / "agent-err.meta.json").write_text(
+            json.dumps({"agentType": "code-writer"}), encoding="utf-8"
+        )
+
+        _original_resolve = Path.resolve
+
+        def _patched_resolve(self: Path, strict: bool = False) -> Path:
+            """Raise OSError when called on the subagent dir under test."""
+            if self == subagent_dir:
+                raise OSError("Simulated unreadable directory")
+            return _original_resolve(self, strict=strict)
+
+        monkeypatch.setattr(Path, "resolve", _patched_resolve)
+
+        with pytest.warns(UserWarning, match=r"unreadable subagent directory"):
+            _parse_session(jsonl, "proj")
+
+    def test_oserror_warning_distinct_from_cycle_warning(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """OSError warning text does not match cycle or depth-cap patterns.
+
+        Confirms message text is distinguishable from both existing
+        warning types without relying on pytest.warns exclusion.
+        """
+        session_id = "sess-oserror-distinct"
+        project_dir = tmp_path / "projects" / "proj"
+        project_dir.mkdir(parents=True)
+        jsonl = project_dir / f"{session_id}.jsonl"
+        jsonl.write_text(
+            json.dumps(
+                {
+                    "type": "assistant",
+                    "timestamp": "2026-05-14T10:00:00.000Z",
+                    "sessionId": session_id,
+                    "message": {
+                        "model": "claude-opus-4-6",
+                        "role": "assistant",
+                        "content": [],
+                        "usage": {
+                            "input_tokens": 1,
+                            "output_tokens": 1,
+                            "cache_read_input_tokens": 0,
+                            "cache_creation_input_tokens": 0,
+                        },
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        subagent_dir = project_dir / session_id / "subagents"
+        subagent_dir.mkdir(parents=True)
+
+        _original_resolve = Path.resolve
+
+        def _patched_resolve(self: Path, strict: bool = False) -> Path:
+            if self == subagent_dir:
+                raise OSError("No such device")
+            return _original_resolve(self, strict=strict)
+
+        monkeypatch.setattr(Path, "resolve", _patched_resolve)
+
+        caught_messages: list[str] = []
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            _parse_session(jsonl, "proj")
+        caught_messages = [str(warning.message) for warning in w]
+
+        assert len(caught_messages) == 1
+        msg = caught_messages[0]
+        # Must not match the other two warning types
+        assert "cycle detected" not in msg
+        assert "depth cap" not in msg
+        # Must contain the OSError-specific text
+        assert "unreadable subagent directory" in msg
+
+    def test_parser_continues_after_oserror(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Parser continues and returns records when one subagent dir raises OSError.
+
+        AC #2 + #3: two subagent entries exist; only the first triggers
+        OSError on resolve(). The second parses successfully, proving the
+        loop continues and records for the healthy session are returned.
+        """
+        session_id = "sess-oserror-continue"
+        project_dir = tmp_path / "projects" / "proj"
+        project_dir.mkdir(parents=True)
+        jsonl = project_dir / f"{session_id}.jsonl"
+
+        lines = [
+            {
+                "type": "agent-setting",
+                "agentSetting": "general-purpose",
+                "sessionId": session_id,
+            },
+            {
+                "type": "assistant",
+                "timestamp": "2026-05-14T10:00:00.000Z",
+                "sessionId": session_id,
+                "message": {
+                    "model": "claude-opus-4-6",
+                    "role": "assistant",
+                    "content": [],
+                    "usage": {
+                        "input_tokens": 10,
+                        "output_tokens": 5,
+                        "cache_read_input_tokens": 0,
+                        "cache_creation_input_tokens": 0,
+                    },
+                },
+            },
+        ]
+        jsonl.write_text(
+            "\n".join(json.dumps(line) for line in lines),
+            encoding="utf-8",
+        )
+
+        subagent_dir = project_dir / session_id / "subagents"
+        subagent_dir.mkdir(parents=True)
+
+        # First subagent: the one whose subagents/ child will raise OSError
+        (subagent_dir / "agent-bad.meta.json").write_text(
+            json.dumps({"agentType": "broken-agent"}), encoding="utf-8"
+        )
+        bad_subagent_jsonl_lines = [
+            {
+                "type": "assistant",
+                "timestamp": "2026-05-14T10:01:00.000Z",
+                "sessionId": session_id,
+                "message": {
+                    "model": "claude-sonnet-4-6",
+                    "role": "assistant",
+                    "content": [],
+                    "usage": {
+                        "input_tokens": 20,
+                        "output_tokens": 10,
+                        "cache_read_input_tokens": 0,
+                        "cache_creation_input_tokens": 0,
+                    },
+                },
+            },
+        ]
+        (subagent_dir / "agent-bad.jsonl").write_text(
+            "\n".join(json.dumps(line) for line in bad_subagent_jsonl_lines),
+            encoding="utf-8",
+        )
+        bad_child_dir = subagent_dir / "agent-bad"
+        bad_child_dir.mkdir(parents=True)
+        bad_child_subagents = bad_child_dir / "subagents"
+        bad_child_subagents.mkdir(parents=True)
+
+        # Second subagent: healthy, should produce one record
+        (subagent_dir / "agent-ok.meta.json").write_text(
+            json.dumps({"agentType": "healthy-agent"}), encoding="utf-8"
+        )
+        ok_subagent_jsonl_lines = [
+            {
+                "type": "assistant",
+                "timestamp": "2026-05-14T10:02:00.000Z",
+                "sessionId": session_id,
+                "message": {
+                    "model": "claude-haiku-4-5",
+                    "role": "assistant",
+                    "content": [],
+                    "usage": {
+                        "input_tokens": 99,
+                        "output_tokens": 33,
+                        "cache_read_input_tokens": 0,
+                        "cache_creation_input_tokens": 0,
+                    },
+                },
+            },
+        ]
+        (subagent_dir / "agent-ok.jsonl").write_text(
+            "\n".join(json.dumps(line) for line in ok_subagent_jsonl_lines),
+            encoding="utf-8",
+        )
+
+        _original_resolve = Path.resolve
+
+        def _patched_resolve(self: Path, strict: bool = False) -> Path:
+            """Raise OSError only for the bad child's subagents directory."""
+            if self == bad_child_subagents:
+                raise OSError("Simulated permission denied")
+            return _original_resolve(self, strict=strict)
+
+        monkeypatch.setattr(Path, "resolve", _patched_resolve)
+
+        with pytest.warns(UserWarning, match=r"unreadable subagent directory"):
+            session = _parse_session(jsonl, "proj")
+
+        assert session is not None
+        # Root (1) + bad agent (1) + healthy agent (1) = 3 messages total
+        agent_types = {m.agent_type for m in session.messages}
+        assert (
+            "healthy-agent" in agent_types
+        ), "healthy-agent records must be present even after OSError"
+
+    def test_other_sessions_unaffected_by_oserror(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Sessions without an unreadable subagent dir parse fully.
+
+        AC #3: when one session's subagent dir raises OSError, other
+        sessions in the same data directory parse without errors or
+        missing records.
+        """
+        # Session 1: has an unreadable subagent directory
+        bad_session_id = "sess-bad"
+        project_dir = tmp_path / "projects" / "proj"
+        project_dir.mkdir(parents=True)
+        bad_jsonl = project_dir / f"{bad_session_id}.jsonl"
+        bad_jsonl.write_text(
+            json.dumps(
+                {
+                    "type": "assistant",
+                    "timestamp": "2026-05-14T09:00:00.000Z",
+                    "sessionId": bad_session_id,
+                    "message": {
+                        "model": "claude-opus-4-6",
+                        "role": "assistant",
+                        "content": [],
+                        "usage": {
+                            "input_tokens": 5,
+                            "output_tokens": 2,
+                            "cache_read_input_tokens": 0,
+                            "cache_creation_input_tokens": 0,
+                        },
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+        bad_subagent_dir = project_dir / bad_session_id / "subagents"
+        bad_subagent_dir.mkdir(parents=True)
+
+        # Session 2: fully healthy
+        ok_session_id = "sess-ok"
+        ok_jsonl = project_dir / f"{ok_session_id}.jsonl"
+        ok_jsonl.write_text(
+            json.dumps(
+                {
+                    "type": "assistant",
+                    "timestamp": "2026-05-14T10:00:00.000Z",
+                    "sessionId": ok_session_id,
+                    "message": {
+                        "model": "claude-haiku-4-5",
+                        "role": "assistant",
+                        "content": [],
+                        "usage": {
+                            "input_tokens": 77,
+                            "output_tokens": 44,
+                            "cache_read_input_tokens": 0,
+                            "cache_creation_input_tokens": 0,
+                        },
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        _original_resolve = Path.resolve
+
+        def _patched_resolve(self: Path, strict: bool = False) -> Path:
+            if self == bad_subagent_dir:
+                raise OSError("Simulated unreadable directory")
+            return _original_resolve(self, strict=strict)
+
+        monkeypatch.setattr(Path, "resolve", _patched_resolve)
+
+        with pytest.warns(UserWarning, match=r"unreadable subagent directory"):
+            sessions = parse_sessions(tmp_path)
+
+        assert len(sessions) == 2
+        session_ids = {s.session_id for s in sessions}
+        assert ok_session_id in session_ids
+        # Verify the healthy session has its record intact
+        ok_session = next(s for s in sessions if s.session_id == ok_session_id)
+        assert len(ok_session.messages) == 1
+        assert ok_session.messages[0].input_tokens == 77
