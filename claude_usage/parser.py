@@ -182,7 +182,17 @@ def _parse_subagents_recursive(
     # Cycle defense: resolve the subagents directory to its canonical real
     # path.  On POSIX, symlinks are fully resolved; on Windows, junctions
     # may not be normalized (fallback to depth cap).
-    real_dir = subagent_dir.resolve()
+    # OSError can occur on broken symlinks, revoked permissions, or
+    # other filesystem faults — warn and skip rather than crash.
+    try:
+        real_dir = subagent_dir.resolve()
+    except OSError as exc:
+        warnings.warn(
+            f"Skipping unreadable subagent directory {subagent_dir}: {exc}",
+            UserWarning,
+            stacklevel=2,
+        )
+        return []
     if real_dir in visited:
         warnings.warn(
             f"Subagent directory cycle detected: {real_dir}",
