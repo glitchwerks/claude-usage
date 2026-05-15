@@ -1,7 +1,7 @@
 {
   "name": "claude-prospector",
   "version": "0.4.0",
-  "description": "Claude Code token usage dashboard with three-bucket billing windows (5h / 7d / Sonnet-7d), per-model and per-agent attribution including nested sub-agent paths, and skill adoption tracking.",
+  "description": "Claude Code token usage analyzer with optimization recommendations. Surfaces what's eating your budget across the 5h / 7d / Sonnet-7d billing windows, with per-model and nested per-agent attribution and skill adoption tracking. Ships both an interactive dashboard and a conversational analysis skill.",
   "author": {
     "name": "Christopher Beaulieu",
     "email": "cmb_dev@outlook.com"
