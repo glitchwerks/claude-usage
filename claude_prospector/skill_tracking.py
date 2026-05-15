@@ -1,38 +1,70 @@
-"""Parse skill tracking JSONL log and extract skill references from prompts."""
+"""Parse skill tracking JSONL log and extract skill references from prompts.
+
+Tracking data is written by ``hooks/skill-tracker.py`` as per-day JSONL
+files under ``~/.claude/claude-prospector/skill-tracking/<YYYY-MM-DD>.jsonl``.
+The directory can be overridden via the
+``CLAUDE_PROSPECTOR_SKILL_TRACKING_DIR`` environment variable for testing.
+
+Backwards-compatibility note (transitional, remove in v0.5.x):
+If the old flat file ``<data_dir>/skill-tracking.jsonl`` exists, its
+records are concatenated with the per-day directory records so users who
+migrated from the flat layout continue to see historical data.
+"""
 
 from __future__ import annotations
 
 import json
+import os
 import re
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 from claude_prospector.models import SkillInvokedEvent, SkillPassedEvent
 
-TRACKING_FILE = "skill-tracking.jsonl"
+
+def _default_tracking_dir() -> Path:
+    """Return the per-day tracking directory.
+
+    Reads ``CLAUDE_PROSPECTOR_SKILL_TRACKING_DIR`` from the environment;
+    falls back to ``~/.claude/claude-prospector/skill-tracking/``.
+
+    Returns:
+        Path to the tracking directory.
+    """
+    env_val = os.environ.get("CLAUDE_PROSPECTOR_SKILL_TRACKING_DIR")
+    if env_val:
+        return Path(env_val)
+    return Path.home() / ".claude" / "claude-prospector" / "skill-tracking"
 
 
 def _parse_timestamp(ts_str: str) -> datetime:
-    """Parse an ISO 8601 timestamp string to a datetime."""
+    """Parse an ISO 8601 timestamp string to a datetime.
+
+    Args:
+        ts_str: ISO 8601 string, with optional trailing ``Z``.
+
+    Returns:
+        Parsed :class:`datetime` object.
+    """
     ts_str = ts_str.replace("Z", "+00:00")
     return datetime.fromisoformat(ts_str)
 
 
-def parse_skill_tracking(
-    data_dir: Path,
-) -> tuple[list[SkillPassedEvent], list[SkillInvokedEvent]]:
-    """Read skill-tracking.jsonl and return parsed events.
+def _parse_lines(
+    lines: list[str],
+    passed: list[SkillPassedEvent],
+    invoked: list[SkillInvokedEvent],
+) -> None:
+    """Parse JSONL lines and append events to the supplied lists in-place.
 
-    Returns empty lists if the file doesn't exist.
+    Silently skips malformed JSON lines and unknown event types.
+
+    Args:
+        lines: Raw text lines from a JSONL file.
+        passed: Accumulator list for :class:`SkillPassedEvent` records.
+        invoked: Accumulator list for :class:`SkillInvokedEvent` records.
     """
-    tracking_file = data_dir / TRACKING_FILE
-    if not tracking_file.exists():
-        return [], []
-
-    passed: list[SkillPassedEvent] = []
-    invoked: list[SkillInvokedEvent] = []
-
-    for line in tracking_file.read_text(encoding="utf-8").splitlines():
+    for line in lines:
         line = line.strip()
         if not line:
             continue
@@ -66,6 +98,75 @@ def parse_skill_tracking(
             except (KeyError, ValueError):
                 continue
 
+
+def parse_skill_tracking(
+    data_dir: Path,
+    retention_days: int = 90,
+) -> tuple[list[SkillPassedEvent], list[SkillInvokedEvent]]:
+    """Read skill-tracking event files and return parsed events.
+
+    Walks per-day JSONL files from the configured tracking directory
+    (``CLAUDE_PROSPECTOR_SKILL_TRACKING_DIR`` env var or
+    ``~/.claude/claude-prospector/skill-tracking/``), skipping files
+    whose date is older than ``retention_days`` days.
+
+    Backwards-compatibility (transitional — remove in v0.5.x): if a
+    flat ``skill-tracking.jsonl`` file exists inside ``data_dir``, its
+    records are read first and merged with the per-day records. This
+    eases migration from the v0.3.x flat-file layout.
+
+    Args:
+        data_dir: Session data directory. Used only for the transitional
+            flat-file fallback; per-day files come from the tracking
+            directory resolved via environment variable.
+        retention_days: Per-day files older than this many days from
+            today are skipped. Defaults to 90.
+
+    Returns:
+        A 2-tuple ``(passed_events, invoked_events)`` of parsed records.
+        Returns empty lists if no tracking files exist.
+    """
+    passed: list[SkillPassedEvent] = []
+    invoked: list[SkillInvokedEvent] = []
+
+    # ------------------------------------------------------------------
+    # Backwards-compat: read old flat file if present (v0.3.x layout)
+    # ------------------------------------------------------------------
+    legacy_file = data_dir / "skill-tracking.jsonl"
+    if legacy_file.exists():
+        _parse_lines(
+            legacy_file.read_text(encoding="utf-8").splitlines(),
+            passed,
+            invoked,
+        )
+
+    # ------------------------------------------------------------------
+    # Per-day files from the new directory layout
+    # ------------------------------------------------------------------
+    tracking_dir = _default_tracking_dir()
+    if not tracking_dir.is_dir():
+        return passed, invoked
+
+    cutoff = date.today() - timedelta(days=retention_days)
+
+    # Sort by filename so files are processed in chronological order.
+    for jsonl_file in sorted(tracking_dir.glob("*.jsonl")):
+        # Extract the date from the filename stem (YYYY-MM-DD).
+        try:
+            file_date = date.fromisoformat(jsonl_file.stem)
+        except ValueError:
+            # Skip files whose names don't match the expected date format.
+            continue
+
+        if file_date < cutoff:
+            continue
+
+        _parse_lines(
+            jsonl_file.read_text(encoding="utf-8").splitlines(),
+            passed,
+            invoked,
+        )
+
     return passed, invoked
 
 
@@ -73,9 +174,18 @@ def build_skill_allowlist(claude_dir: Path) -> set[str]:
     """Scan filesystem to build a set of installed skill names.
 
     Scans:
-    - ~/.claude/skills/ (user skills — directory names)
-    - ~/.claude/plugins/cache/*/superpowers/*/skills/ (plugin skills)
-    - Plugin subdirectories for prefix:name format
+
+    - ``<claude_dir>/skills/`` — user skills (directory names).
+    - ``<claude_dir>/plugins/cache/*/*/skills/`` — plugin skills,
+      emitted both bare (``brainstorming``) and namespaced
+      (``superpowers:brainstorming``).
+
+    Args:
+        claude_dir: Path to the ``.claude`` user directory.
+
+    Returns:
+        Set of skill name strings, including namespaced variants for
+        plugin skills.
     """
     skills: set[str] = set()
     skills_dir = claude_dir / "skills"
@@ -157,15 +267,15 @@ def extract_skills_from_prompt(prompt: str, allowlist: set[str]) -> list[str]:
     Uses two detection strategies and merges results before filtering
     against the allowlist:
 
-    1. **Backtick matches** — any backtick-quoted token.  Namespaced
-       names (containing ``:``) are always accepted.  Single-segment
+    1. **Backtick matches** — any backtick-quoted token. Namespaced
+       names (containing ``:``) are always accepted. Single-segment
        names are only accepted when the word *skill* (or *skills*)
        appears within ``_SKILL_PROXIMITY_CHARS`` characters of the
        match, preventing incidental mentions like a bare ``git`` in
        command examples from inflating metrics.
 
     2. **Phrase pattern matches** — patterns like *"Use the python
-       skill"* or *"Invoke the powershell skill"*.  These already
+       skill"* or *"Invoke the powershell skill"*. These already
        require the word *skill* in their regex, so they are accepted
        unconditionally (no proximity check needed).
 
