@@ -16,18 +16,18 @@ analysis path lives in the `usage-analysis` skill; this command is the bare
 If the user passes no arguments, run the **7-day rolling** window (matches the most
 useful billing bucket) and write the dashboard to the platform-appropriate path:
 
-- POSIX: `$HOME/.claude/usage-dashboard.html`
-- Windows: `%USERPROFILE%\.claude\usage-dashboard.html`
+- POSIX: `$HOME/.claude/claude-prospector/dashboard.html`
+- Windows: `%USERPROFILE%\.claude\claude-prospector\dashboard.html`
 
 Pass `--no-open` so the file lands at the known path without spawning a browser tab —
 that side effect is usually unwanted from inside a Claude Code session.
 
 ```bash
 # POSIX
-python -m claude_prospector dashboard --window 7d --output "$HOME/.claude/usage-dashboard.html" --no-open
+python -m claude_prospector dashboard --window 7d --output "$HOME/.claude/claude-prospector/dashboard.html" --no-open
 
 # Windows
-python -m claude_prospector dashboard --window 7d --output "%USERPROFILE%\.claude\usage-dashboard.html" --no-open
+python -m claude_prospector dashboard --window 7d --output "%USERPROFILE%\.claude\claude-prospector\dashboard.html" --no-open
 ```
 
 The CLI prints `Dashboard written to <path>` to stdout on success. Echo that line

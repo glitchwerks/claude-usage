@@ -29,8 +29,8 @@ python -m claude_prospector
 
 The dashboard is automatically regenerated after every session via the Stop hook and written to:
 
-- POSIX: `$HOME/.claude/usage-dashboard.html`
-- Windows: `%USERPROFILE%\.claude\usage-dashboard.html`
+- POSIX: `$HOME/.claude/claude-prospector/dashboard.html`
+- Windows: `%USERPROFILE%\.claude\claude-prospector\dashboard.html`
 
 ## Regenerating the Dashboard
 
@@ -39,13 +39,13 @@ Use these commands to regenerate the dashboard with a specific time window. Alwa
 
 | Question                                 | Command                                                                                                                                                                                                               |
 | ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Full history (default)                   | `python -m claude_prospector dashboard --output $HOME/.claude/usage-dashboard.html --no-open` (POSIX) / `python -m claude_prospector dashboard --output %USERPROFILE%\.claude\usage-dashboard.html --no-open` (Windows) |
-| Last 7 days                              | `python -m claude_prospector dashboard --window 7d --output $HOME/.claude/usage-dashboard.html --no-open`                                                                                                              |
-| Last 5 hours (matches 5h billing bucket) | `python -m claude_prospector dashboard --window 5h --output $HOME/.claude/usage-dashboard.html --no-open`                                                                                                              |
-| Specific date range                      | `python -m claude_prospector dashboard --from 2026-04-01 --to 2026-04-30 --output $HOME/.claude/usage-dashboard.html --no-open`                                                                                        |
-| With budget gauges                       | `python -m claude_prospector dashboard --window 7d --limit-5h 600000 --limit-7d 4000000 --limit-sonnet-7d 2000000 --output $HOME/.claude/usage-dashboard.html --no-open`                                               |
+| Full history (default)                   | `python -m claude_prospector dashboard --output $HOME/.claude/claude-prospector/dashboard.html --no-open` (POSIX) / `python -m claude_prospector dashboard --output %USERPROFILE%\.claude\claude-prospector\dashboard.html --no-open` (Windows) |
+| Last 7 days                              | `python -m claude_prospector dashboard --window 7d --output $HOME/.claude/claude-prospector/dashboard.html --no-open`                                                                                                              |
+| Last 5 hours (matches 5h billing bucket) | `python -m claude_prospector dashboard --window 5h --output $HOME/.claude/claude-prospector/dashboard.html --no-open`                                                                                                              |
+| Specific date range                      | `python -m claude_prospector dashboard --from 2026-04-01 --to 2026-04-30 --output $HOME/.claude/claude-prospector/dashboard.html --no-open`                                                                                        |
+| With budget gauges                       | `python -m claude_prospector dashboard --window 7d --limit-5h 600000 --limit-7d 4000000 --limit-sonnet-7d 2000000 --output $HOME/.claude/claude-prospector/dashboard.html --no-open`                                               |
 
-On Windows, substitute `%USERPROFILE%\.claude\usage-dashboard.html` for `$HOME/.claude/usage-dashboard.html` in all commands above.
+On Windows, substitute `%USERPROFILE%\.claude\claude-prospector\dashboard.html` for `$HOME/.claude/claude-prospector/dashboard.html` in all commands above.
 
 All commands exit 0 and print a confirmation line to stdout:
 `Dashboard written to <path>`
@@ -64,13 +64,13 @@ line 179. Read the file starting at that line to extract the payload:
 
 ```powershell
 # Windows PowerShell
-Get-Content "$env:USERPROFILE\.claude\usage-dashboard.html" |
+Get-Content "$env:USERPROFILE\.claude\claude-prospector\dashboard.html" |
   Select-Object -Skip 178 -First 50
 ```
 
 ```bash
 # POSIX
-sed -n '179,228p' "$HOME/.claude/usage-dashboard.html"
+sed -n '179,228p' "$HOME/.claude/claude-prospector/dashboard.html"
 ```
 
 The `const DATA` object contains all the fields described in the analysis sections below.
@@ -92,8 +92,10 @@ object starting at line 179):
 
 Skill invocation events are logged to a separate file that is machine-readable:
 
-- POSIX: `$HOME/.claude/skill-tracking.jsonl`
-- Windows: `%USERPROFILE%\.claude\skill-tracking.jsonl`
+- POSIX: `$HOME/.claude/claude-prospector/skill-tracking/<YYYY-MM-DD>.jsonl` (per-day rotation)
+- Windows: `%USERPROFILE%\.claude\claude-prospector\skill-tracking\<YYYY-MM-DD>.jsonl`
+
+Each day's events land in a new file; the reader walks the directory in date order. Older files outside the 90-day retention window are skipped.
 
 Each line is a JSON object:
 
@@ -148,7 +150,7 @@ Check `by_agent` for outliers:
 
 ### 4. Skill Cost
 
-Check `by_skill` for expensive skills and cross-reference with `skill-tracking.jsonl`:
+Check `by_skill` for expensive skills and cross-reference with the per-day `skill-tracking/<YYYY-MM-DD>.jsonl` files:
 
 - Brainstorming is expected to be expensive (long back-and-forth)
 - Subagent-driven-development dispatches many subagents — check if reviews add
