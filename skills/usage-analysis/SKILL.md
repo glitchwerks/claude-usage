@@ -18,7 +18,7 @@ spend across the three billing buckets (5h rolling, 7d rolling, Sonnet-only 7d).
 
 ## How the Tool Works
 
-`claude-usage` reads JSONL session files from `~/.claude/projects/` and generates an
+`claude-prospector` reads JSONL session files from `~/.claude/projects/` and generates an
 **interactive HTML dashboard**. It does not write structured data to stdout — all output is HTML.
 
 The tool is installed as the `claude_prospector` package. Invoke it as:
@@ -117,20 +117,24 @@ from stdout, or check the gauge values in the HTML:
 - **5h rolling**: Regenerate with `--window 5h`. High usage means the user is in an
   intensive session.
 - **7d rolling**: Regenerate with `--window 7d`. This is the primary limit to watch.
-- **Sonnet-only 7d**: From the 7d dashboard, read `by_model.sonnet.total_tokens`.
-  This was the user's original bottleneck — the router was switched to Opus specifically
-  to reduce Sonnet consumption.
+- **Sonnet-only 7d**: From the 7d dashboard, read `by_model.sonnet.total_tokens`. This is
+  often the tightest of the three buckets — if the user is approaching this limit, look
+  at which agents drive Sonnet usage (`by_agent` filtered to `primary_model == "sonnet"`)
+  for the largest levers.
 
 ### 2. Model Distribution
 
-Check `by_model` for balance across Opus/Sonnet/Haiku:
+Check `by_model` for balance across Opus/Sonnet/Haiku. Different harnesses assign
+agents to models differently — there is no universal "correct" mapping. What to look
+for instead:
 
-- **Opus should be**: router (general-purpose) + inquisitor reviews
-- **Sonnet should be**: code-writer, debugger, refactor
-- **Haiku should be**: ops, code-reviewer
-
-If Sonnet is disproportionately high, look at `by_agent` to find which Sonnet agents
-are the heaviest consumers.
+- Cross-reference `by_model` with `by_agent.<name>.primary_model` to see whether each
+  agent is running on the model the user *intended* for that role. Drift here is a
+  common cost source (an agent that should be on Haiku but is actually defaulting to
+  Sonnet, for example).
+- If one model dominates disproportionately for the user's stated workflow, that's a
+  signal to investigate — not a fixed prescription. Surface the imbalance and ask
+  which agents the user expected to be on which model.
 
 ### 3. Agent Efficiency
 
@@ -175,8 +179,7 @@ Present findings as:
 2. **Top consumers** — the 2-3 agents/skills/projects eating the most budget
 3. **Actionable recommendations** — specific, concrete changes. Examples:
    - "code-writer is using 40% of your Sonnet budget. Most of it is large greenfield features — consider whether some of that work could be split into smaller plan-file-driven tasks dispatched in parallel."
-   - "The inquisitor hook runs on every PR creation and uses Opus. Consider making it
-     opt-in for small PRs."
+   - "Agent `<X>` is running on Opus but its role is mostly read-only lookups; check whether your harness allows downgrading it to Haiku for those calls."
    - "Project X consumed 60% of your 7d budget. Consider pausing other work until the
      rolling window resets."
 4. **Trend** — if daily data shows increasing/decreasing usage, note it
