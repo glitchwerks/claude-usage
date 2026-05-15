@@ -6,9 +6,8 @@
 
 ## What was supposed to happen
 
-The implementation plan for Issue #41 (nested sub-agent attribution) —
-[`docs/superpowers/plans/2026-05-13-issue-41-nested-agent-attribution-plan.md`](../superpowers/plans/2026-05-13-issue-41-nested-agent-attribution-plan.md)
-— called for a Phase 0 baseline test at `tests/test_aggregator_baseline_flat.py`.
+The implementation plan for Issue #41 (nested sub-agent attribution, implemented
+by PR #42) called for a Phase 0 baseline test at `tests/test_aggregator_baseline_flat.py`.
 That test was meant to assert the *old* flat-agent-key shape on a depth-2 fixture,
 then fail loudly under the new code path once Phase 4 landed — proving the migration
 moved the needle rather than no-op'ing.
