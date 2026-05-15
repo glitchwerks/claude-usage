@@ -7,11 +7,11 @@ import warnings
 from datetime import datetime, timezone
 from pathlib import Path
 
-from claude_usage.constants import (
+from claude_prospector.constants import (
     AGENT_PATH_SEPARATOR as _PATH_SEPARATOR,
     SANITIZED_SEPARATOR_REPLACEMENT as _SANITIZED_SEPARATOR_REPLACEMENT,
 )
-from claude_usage.models import MessageRecord, SessionRecord
+from claude_prospector.models import MessageRecord, SessionRecord
 
 _MAX_AGENT_PATH_LENGTH = 10
 

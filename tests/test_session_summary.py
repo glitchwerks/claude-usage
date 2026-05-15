@@ -10,7 +10,7 @@ from pathlib import Path as _Path
 
 import pytest
 
-from claude_usage.cli.session_summary import (
+from claude_prospector.cli.session_summary import (
     EXIT_IO_FAILURE,
     EXIT_NOT_JSONL,
     EXIT_NO_USER_TURNS,
@@ -97,14 +97,14 @@ class TestBuildSessionSummary:
         populated SessionSummary.
 
         Asserts:
-        - project == "claude-usage" (from cwd field)
+        - project == "claude-prospector" (from cwd field)
         - intent contains the user's first sentence
         - actions is a non-empty list of strings
         - stopped_naturally is True (final stop_reason == "end_turn")
         """
         from pathlib import Path
 
-        from claude_usage.cli.session_summary import build_session_summary
+        from claude_prospector.cli.session_summary import build_session_summary
 
         fixture = Path("tests/fixtures/session_summaries/happy_path.jsonl")
         entries = _parse_fixture(fixture)
@@ -113,7 +113,7 @@ class TestBuildSessionSummary:
             project_slug_fallback=fixture.parent.name,
         )
 
-        assert summary.project == "claude-usage"
+        assert summary.project == "claude-prospector"
         assert "session-summary" in summary.intent.lower()
         assert isinstance(summary.actions, list)
         assert len(summary.actions) > 0
@@ -123,19 +123,19 @@ class TestBuildSessionSummary:
         """project is the basename of the cwd field on the first entry
         that has one.
 
-        The happy_path fixture has cwd="/home/user/claude-usage" so the
-        derived project name must be "claude-usage".
+        The happy_path fixture has cwd="/home/user/claude-prospector" so the
+        derived project name must be "claude-prospector".
         """
         from pathlib import Path
 
-        from claude_usage.cli.session_summary import build_session_summary
+        from claude_prospector.cli.session_summary import build_session_summary
 
         fixture = Path("tests/fixtures/session_summaries/happy_path.jsonl")
         summary = build_session_summary(
             _parse_fixture(fixture),
             project_slug_fallback=fixture.parent.name,
         )
-        assert summary.project == "claude-usage"
+        assert summary.project == "claude-prospector"
 
     def test_project_falls_back_to_unknown(
         self, tmp_path: pytest.TempPathFactory
@@ -145,7 +145,7 @@ class TestBuildSessionSummary:
         """
         import json
 
-        from claude_usage.cli.session_summary import build_session_summary
+        from claude_prospector.cli.session_summary import build_session_summary
 
         # Fixture with no cwd field anywhere and a non-project-hash path.
         fixture = tmp_path / "no_cwd.jsonl"
@@ -179,7 +179,7 @@ class TestBuildSessionSummary:
         """A plain-text user turn returns the first sentence as intent."""
         import json
 
-        from claude_usage.cli.session_summary import build_session_summary
+        from claude_prospector.cli.session_summary import build_session_summary
 
         fixture = tmp_path / "plain_text.jsonl"
         fixture.write_text(
@@ -211,7 +211,7 @@ class TestBuildSessionSummary:
         """system-reminder XML wrapper is stripped; surviving text becomes intent."""
         import json
 
-        from claude_usage.cli.session_summary import build_session_summary
+        from claude_prospector.cli.session_summary import build_session_summary
 
         fixture = tmp_path / "reminder.jsonl"
         content = (
@@ -240,7 +240,7 @@ class TestBuildSessionSummary:
         """Pure slash-command session produces intent 'Ran /project-review'."""
         from pathlib import Path
 
-        from claude_usage.cli.session_summary import build_session_summary
+        from claude_prospector.cli.session_summary import build_session_summary
 
         fixture = Path("tests/fixtures/session_summaries/slash_command_only.jsonl")
         summary = build_session_summary(_parse_fixture(fixture))
@@ -254,7 +254,7 @@ class TestBuildSessionSummary:
         """
         import json
 
-        from claude_usage.cli.session_summary import build_session_summary
+        from claude_prospector.cli.session_summary import build_session_summary
 
         fixture = tmp_path / "empty_intent.jsonl"
         fixture.write_text(
@@ -292,7 +292,7 @@ class TestToolClassification:
         """
         import json
 
-        from claude_usage.cli.session_summary import build_session_summary
+        from claude_prospector.cli.session_summary import build_session_summary
 
         def _make_tool_use(uid: str, name: str, path: str) -> dict:
             return {
@@ -401,7 +401,7 @@ class TestToolClassification:
         """
         import json
 
-        from claude_usage.cli.session_summary import build_session_summary
+        from claude_prospector.cli.session_summary import build_session_summary
 
         skip_tools = [
             ("Read", {"file_path": "foo.py"}),
@@ -481,7 +481,7 @@ class TestToolClassification:
         """
         import json
 
-        from claude_usage.cli.session_summary import build_session_summary
+        from claude_prospector.cli.session_summary import build_session_summary
 
         short_cmd = "uv run pytest -x"
         long_cmd = (
@@ -622,7 +622,7 @@ class TestToolClassification:
         """Agent tool use produces an 'agent_dispatch' ActionRecord."""
         import json
 
-        from claude_usage.cli.session_summary import build_session_summary
+        from claude_prospector.cli.session_summary import build_session_summary
 
         fixture = tmp_path / "agent_dispatch.jsonl"
         fixture.write_text(
@@ -692,7 +692,7 @@ class TestToolClassification:
         - target == subagent_type value from input
         - summary == "Dispatched <subagent_type> sub-agent"
         """
-        from claude_usage.cli.session_summary import (
+        from claude_prospector.cli.session_summary import (
             ActionRecord,
             _collect_tool_uses,
         )
@@ -745,7 +745,7 @@ class TestToolClassification:
         Expected target: "github.create_issue"
         Expected summary: "Called `github.create_issue` (MCP)"
         """
-        from claude_usage.cli.session_summary import (
+        from claude_prospector.cli.session_summary import (
             ActionRecord,
             _collect_tool_uses,
         )
@@ -795,7 +795,7 @@ class TestToolClassification:
         Expected target: "azure.storage"
         Expected summary: "Called `azure.storage` (MCP)"
         """
-        from claude_usage.cli.session_summary import (
+        from claude_prospector.cli.session_summary import (
             ActionRecord,
             _collect_tool_uses,
         )
@@ -846,7 +846,7 @@ class TestToolClassification:
         the plugin segment, so normalization returns None. The forward-compat
         fallback produces an 'other'-type ActionRecord.
         """
-        from claude_usage.cli.session_summary import (
+        from claude_prospector.cli.session_summary import (
             ActionRecord,
             _collect_tool_uses,
         )
@@ -897,7 +897,7 @@ class TestToolClassification:
         resolve to target "github.create_issue". After _collect_tool_uses
         (which includes collapse), only one ActionRecord is returned.
         """
-        from claude_usage.cli.session_summary import _collect_tool_uses
+        from claude_prospector.cli.session_summary import _collect_tool_uses
 
         plugin_entry = {
             "type": "assistant",
@@ -961,7 +961,7 @@ class TestToolClassification:
         tool is added to or removed from the skip list in the spec, this
         test must be updated in lockstep.
         """
-        from claude_usage.cli.session_summary import SKIPPED_TOOLS
+        from claude_prospector.cli.session_summary import SKIPPED_TOOLS
 
         expected = frozenset(
             {
@@ -987,7 +987,7 @@ class TestToolClassification:
         """
         import json
 
-        from claude_usage.cli.session_summary import build_session_summary
+        from claude_prospector.cli.session_summary import build_session_summary
 
         skip_tools = [
             ("Read", {"file_path": "foo.py"}),
@@ -1100,7 +1100,7 @@ class TestToolClassification:
         - target == the original tool name
         - summary == "Used <tool_name> tool"
         """
-        from claude_usage.cli.session_summary import (
+        from claude_prospector.cli.session_summary import (
             ActionRecord,
             _collect_tool_uses,
         )
@@ -1149,12 +1149,12 @@ class TestCollapseConsecutive:
 
         Uses the consecutive_edits_same_file.jsonl fixture from Phase 2
         which has three Edit tool-use blocks all targeting
-        'claude_usage/parser.py'. After _collect_tool_uses (which calls
+        'claude_prospector/parser.py'. After _collect_tool_uses (which calls
         _collapse_consecutive internally), only one ActionRecord remains.
         """
         from pathlib import Path
 
-        from claude_usage.cli.session_summary import build_session_summary
+        from claude_prospector.cli.session_summary import build_session_summary
 
         fixture = Path(
             "tests/fixtures/session_summaries/consecutive_edits_same_file.jsonl"
@@ -1162,7 +1162,7 @@ class TestCollapseConsecutive:
         summary = build_session_summary(_parse_fixture(fixture))
 
         assert len(summary.actions) == 1
-        assert summary.actions[0] == "Edited claude_usage/parser.py"
+        assert summary.actions[0] == "Edited claude_prospector/parser.py"
 
     def test_non_adjacent_edits_do_not_collapse(
         self, tmp_path: pytest.TempPathFactory
@@ -1175,7 +1175,7 @@ class TestCollapseConsecutive:
         """
         import json
 
-        from claude_usage.cli.session_summary import build_session_summary
+        from claude_prospector.cli.session_summary import build_session_summary
 
         def _edit_entry(uid: str, file_path: str, seq: int) -> dict:
             """Build one assistant entry with a single Edit tool use."""
@@ -1247,7 +1247,7 @@ class TestStoppedNaturally:
         """stop_reason 'end_turn' with no prevented-continuation → True."""
         from pathlib import Path
 
-        from claude_usage.cli.session_summary import build_session_summary
+        from claude_prospector.cli.session_summary import build_session_summary
 
         fixture = Path("tests/fixtures/session_summaries/happy_path.jsonl")
         summary = build_session_summary(_parse_fixture(fixture))
@@ -1257,7 +1257,7 @@ class TestStoppedNaturally:
         """stop_reason 'max_tokens' → False (definitive interrupt)."""
         from pathlib import Path
 
-        from claude_usage.cli.session_summary import build_session_summary
+        from claude_prospector.cli.session_summary import build_session_summary
 
         fixture = Path("tests/fixtures/session_summaries/max_tokens_stop.jsonl")
         summary = build_session_summary(_parse_fixture(fixture))
@@ -1267,7 +1267,7 @@ class TestStoppedNaturally:
         """preventedContinuation: true in stop_hook_summary → False."""
         from pathlib import Path
 
-        from claude_usage.cli.session_summary import build_session_summary
+        from claude_prospector.cli.session_summary import build_session_summary
 
         fixture = Path("tests/fixtures/session_summaries/prevented_continuation.jsonl")
         summary = build_session_summary(_parse_fixture(fixture))
@@ -1277,7 +1277,7 @@ class TestStoppedNaturally:
         """Zero assistant entries → None (nothing to judge)."""
         from pathlib import Path
 
-        from claude_usage.cli.session_summary import build_session_summary
+        from claude_prospector.cli.session_summary import build_session_summary
 
         fixture = Path("tests/fixtures/session_summaries/no_assistant_entries.jsonl")
         summary = build_session_summary(_parse_fixture(fixture))
@@ -1287,7 +1287,7 @@ class TestStoppedNaturally:
         """Last assistant entry has no stop_reason key → None (signal absent)."""
         from pathlib import Path
 
-        from claude_usage.cli.session_summary import build_session_summary
+        from claude_prospector.cli.session_summary import build_session_summary
 
         fixture = Path("tests/fixtures/session_summaries/missing_stop_reason.jsonl")
         summary = build_session_summary(_parse_fixture(fixture))
@@ -1305,7 +1305,7 @@ class TestMaxActionsCap:
         """
         from pathlib import Path
 
-        from claude_usage.cli.session_summary import build_session_summary
+        from claude_prospector.cli.session_summary import build_session_summary
 
         fixture = Path("tests/fixtures/session_summaries/over_fifty_actions.jsonl")
         # Default max_actions == 50.
@@ -1319,7 +1319,7 @@ class TestMaxActionsCap:
         """max_actions=5 keeps 4 real actions plus the sentinel."""
         from pathlib import Path
 
-        from claude_usage.cli.session_summary import build_session_summary
+        from claude_prospector.cli.session_summary import build_session_summary
 
         fixture = Path("tests/fixtures/session_summaries/over_fifty_actions.jsonl")
         summary = build_session_summary(_parse_fixture(fixture), max_actions=5)
@@ -1335,7 +1335,7 @@ class TestMaxActionsCap:
         """max_actions=0 disables the cap — all 55 actions are returned."""
         from pathlib import Path
 
-        from claude_usage.cli.session_summary import build_session_summary
+        from claude_prospector.cli.session_summary import build_session_summary
 
         fixture = Path("tests/fixtures/session_summaries/over_fifty_actions.jsonl")
         summary = build_session_summary(_parse_fixture(fixture), max_actions=0)
@@ -1357,7 +1357,7 @@ class TestExitNoUserTurns:
             [
                 sys.executable,
                 "-m",
-                "claude_usage",
+                "claude_prospector",
                 "session-summary",
                 "--path",
                 str(fixture),
@@ -1380,7 +1380,7 @@ class TestExitNoUserTurns:
             [
                 sys.executable,
                 "-m",
-                "claude_usage",
+                "claude_prospector",
                 "session-summary",
                 "--path",
                 str(zero_byte),
@@ -1402,7 +1402,7 @@ class TestExitNoUserTurns:
             [
                 sys.executable,
                 "-m",
-                "claude_usage",
+                "claude_prospector",
                 "session-summary",
                 "--path",
                 str(ws_only),
@@ -1432,7 +1432,7 @@ class TestExitNotJsonl:
             [
                 sys.executable,
                 "-m",
-                "claude_usage",
+                "claude_prospector",
                 "session-summary",
                 "--path",
                 str(malformed),
@@ -1455,7 +1455,7 @@ class TestExitNotJsonl:
             [
                 sys.executable,
                 "-m",
-                "claude_usage",
+                "claude_prospector",
                 "session-summary",
                 "--path",
                 str(empty),
@@ -1483,7 +1483,7 @@ class TestErrorPaths:
             [
                 sys.executable,
                 "-m",
-                "claude_usage",
+                "claude_prospector",
                 "session-summary",
                 "--path",
                 str(nonexistent),
@@ -1520,7 +1520,7 @@ class TestStdoutStderrDiscipline:
             [
                 sys.executable,
                 "-m",
-                "claude_usage",
+                "claude_prospector",
                 "session-summary",
                 "--path",
                 str(nonexistent),
@@ -1547,7 +1547,7 @@ class TestStdoutStderrDiscipline:
             [
                 sys.executable,
                 "-m",
-                "claude_usage",
+                "claude_prospector",
                 "session-summary",
                 "--path",
                 str(fixture),

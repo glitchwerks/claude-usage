@@ -1,6 +1,6 @@
 """Regression test: dashboard JSON output is byte-identical after refactor.
 
-Compares 'claude-usage dashboard --format json' output against the
+Compares 'claude-prospector dashboard --format json' output against the
 snapshot captured on main before the subparser refactor (Phase 0).
 """
 
@@ -45,7 +45,7 @@ def test_existing_dashboard_unchanged() -> None:
         [
             sys.executable,
             "-m",
-            "claude_usage",
+            "claude_prospector",
             "dashboard",
             "--from",
             "2026-01-01",

@@ -1,2 +1,2 @@
-{"type":"user","message":{"role":"user","content":"Do a long task."},"uuid":"u-001","timestamp":"2026-04-20T12:00:00.000Z","sessionId":"sess-maxtok","userType":"external","cwd":"/home/user/claude-usage"}
+{"type":"user","message":{"role":"user","content":"Do a long task."},"uuid":"u-001","timestamp":"2026-04-20T12:00:00.000Z","sessionId":"sess-maxtok","userType":"external","cwd":"/home/user/claude-prospector"}
 {"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Working..."}],"model":"claude-sonnet-4-6","stop_reason":"max_tokens","usage":{"input_tokens":200,"output_tokens":1024,"cache_creation_input_tokens":0,"cache_read_input_tokens":0}},"uuid":"a-001","timestamp":"2026-04-20T12:00:10.000Z","sessionId":"sess-maxtok"}

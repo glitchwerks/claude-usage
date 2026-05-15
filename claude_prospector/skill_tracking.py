@@ -7,7 +7,7 @@ import re
 from datetime import datetime
 from pathlib import Path
 
-from claude_usage.models import SkillInvokedEvent, SkillPassedEvent
+from claude_prospector.models import SkillInvokedEvent, SkillPassedEvent
 
 TRACKING_FILE = "skill-tracking.jsonl"
 

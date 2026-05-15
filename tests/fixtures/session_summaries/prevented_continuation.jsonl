@@ -1,3 +1,3 @@
-{"type":"user","message":{"role":"user","content":"Run the build."},"uuid":"u-001","timestamp":"2026-04-20T13:00:00.000Z","sessionId":"sess-prev","userType":"external","cwd":"/home/user/claude-usage"}
+{"type":"user","message":{"role":"user","content":"Run the build."},"uuid":"u-001","timestamp":"2026-04-20T13:00:00.000Z","sessionId":"sess-prev","userType":"external","cwd":"/home/user/claude-prospector"}
 {"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Building..."}],"model":"claude-sonnet-4-6","stop_reason":"end_turn","usage":{"input_tokens":50,"output_tokens":10,"cache_creation_input_tokens":0,"cache_read_input_tokens":0}},"uuid":"a-001","timestamp":"2026-04-20T13:00:05.000Z","sessionId":"sess-prev"}
 {"type":"system","subtype":"stop_hook_summary","preventedContinuation":true,"timestamp":"2026-04-20T13:00:06.000Z","sessionId":"sess-prev","uuid":"sys-001"}

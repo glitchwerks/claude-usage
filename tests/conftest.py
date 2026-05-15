@@ -1,4 +1,4 @@
-"""Shared test fixtures for claude-usage tests."""
+"""Shared test fixtures for claude-prospector tests."""
 
 from __future__ import annotations
 

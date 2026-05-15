@@ -1,4 +1,4 @@
-# claude-usage
+# claude-prospector
 
 Parse Claude Code session data and generate an interactive HTML dashboard showing token consumption by model, agent, skill, project, and time period.
 
@@ -18,55 +18,55 @@ Requires Python 3.10+.
 
 ```bash
 # Default: last 7 days, opens in browser
-python -m claude_usage
+python -m claude_prospector
 
 # Rolling window matching billing buckets
-python -m claude_usage --window 5h
-python -m claude_usage --window 7d
+python -m claude_prospector --window 5h
+python -m claude_prospector --window 7d
 
 # Custom date range
-python -m claude_usage --from 2026-04-01 --to 2026-04-09
+python -m claude_prospector --from 2026-04-01 --to 2026-04-09
 
 # Output to file instead of opening browser
-python -m claude_usage --output report.html --no-open
+python -m claude_prospector --output report.html --no-open
 
 # Custom Claude data directory
-python -m claude_usage --data-dir "D:\other\.claude"
+python -m claude_prospector --data-dir "D:\other\.claude"
 
 # Set budget limits for gauge percentages
-python -m claude_usage --limit-5h 600000 --limit-7d 4000000 --limit-sonnet-7d 2000000
+python -m claude_prospector --limit-5h 600000 --limit-7d 4000000 --limit-sonnet-7d 2000000
 ```
 
 ## Subcommands
 
 After the subparser refactor, all functionality is accessed through named
-subcommands. Bare `claude-usage` prints help and exits 0.
+subcommands. Bare `claude-prospector` prints help and exits 0.
 
 ### `dashboard` — interactive HTML dashboard
 
 ```bash
 # Default: last 7 days, opens in browser
-claude-usage dashboard
+claude-prospector dashboard
 
 # Rolling window matching Claude billing buckets
-claude-usage dashboard --window 5h
-claude-usage dashboard --window 7d
+claude-prospector dashboard --window 5h
+claude-prospector dashboard --window 7d
 
 # Custom date range
-claude-usage dashboard --from 2026-04-01 --to 2026-04-09
+claude-prospector dashboard --from 2026-04-01 --to 2026-04-09
 
 # Output to file instead of opening browser
-claude-usage dashboard --output report.html --no-open
+claude-prospector dashboard --output report.html --no-open
 
 # Custom Claude data directory
-claude-usage dashboard --data-dir "D:\other\.claude"
+claude-prospector dashboard --data-dir "D:\other\.claude"
 
 # Set budget limits for gauge percentages
-claude-usage dashboard --limit-5h 600000 --limit-7d 4000000 \
+claude-prospector dashboard --limit-5h 600000 --limit-7d 4000000 \
     --limit-sonnet-7d 2000000
 
 # Emit JSON (for scripting / CI)
-claude-usage dashboard --format json
+claude-prospector dashboard --format json
 ```
 
 All flags are unchanged from the pre-refactor form — only their location
@@ -79,7 +79,7 @@ JSON summary suitable for consumption by the `/whats-next` skill or any
 other tool that needs to know what a session did.
 
 ```bash
-claude-usage session-summary --path ~/.claude/projects/<hash>/<session>.jsonl
+claude-prospector session-summary --path ~/.claude/projects/<hash>/<session>.jsonl
 ```
 
 **Flags:**
@@ -94,10 +94,10 @@ claude-usage session-summary --path ~/.claude/projects/<hash>/<session>.jsonl
 
 ```json
 {
-  "project": "claude-usage",
+  "project": "claude-prospector",
   "intent": "Implement the session-summary subcommand for the /whats-next skill",
   "actions": [
-    "Edited claude_usage/cli/session_summary.py",
+    "Edited claude_prospector/cli/session_summary.py",
     "Created tests/test_session_summary.py",
     "Ran pytest tests/test_session_summary.py -x",
     "Dispatched code-reviewer sub-agent"
@@ -123,19 +123,19 @@ The old flag-only form **no longer works** after v0.2.0:
 
 ```bash
 # REMOVED — will print help and exit 0, not run the dashboard
-claude-usage --format json
+claude-prospector --format json
 
 # CORRECT — migrate all callers to:
-claude-usage dashboard --format json
+claude-prospector dashboard --format json
 ```
 
-Any script, skill, or CI step that invokes `claude-usage` with bare flags
-(no subcommand) must be updated to use `claude-usage dashboard [flags]`.
+Any script, skill, or CI step that invokes `claude-prospector` with bare flags
+(no subcommand) must be updated to use `claude-prospector dashboard [flags]`.
 
 ## Nested agent attribution
 
 When Claude Code sessions dispatch sub-agents that themselves dispatch further
-sub-agents, `claude-usage` traces the full depth and attributes tokens to the
+sub-agents, `claude-prospector` traces the full depth and attributes tokens to the
 complete root-to-leaf chain rather than just the immediate leaf.
 
 - **Data model.** Each `MessageRecord` carries an `agent_path: tuple[str, ...]`
@@ -200,8 +200,8 @@ Reads JSONL session files from `~/.claude/projects/`. Each session file contains
 ### Setup
 
 ```bash
-git clone https://github.com/cbeaulieu-gt/claude-usage.git
-cd claude-usage
+git clone https://github.com/cbeaulieu-gt/claude-prospector.git
+cd claude-prospector
 uv pip install -e ".[dev]"   # installs runtime + ruff + pytest
 ```
 

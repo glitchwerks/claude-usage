@@ -1,9 +1,9 @@
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from claude_usage.aggregator import AGENT_PATH_SEPARATOR, aggregate
-from claude_usage.models import MessageRecord, SessionRecord
-from claude_usage.parser import parse_sessions
+from claude_prospector.aggregator import AGENT_PATH_SEPARATOR, aggregate
+from claude_prospector.models import MessageRecord, SessionRecord
+from claude_prospector.parser import parse_sessions
 
 
 def _msg(

@@ -1,2 +1,2 @@
-{"type":"user","message":{"role":"user","content":"What is 2+2?"},"uuid":"u-001","timestamp":"2026-04-20T15:00:00.000Z","sessionId":"sess-nostop","userType":"external","cwd":"/home/user/claude-usage"}
+{"type":"user","message":{"role":"user","content":"What is 2+2?"},"uuid":"u-001","timestamp":"2026-04-20T15:00:00.000Z","sessionId":"sess-nostop","userType":"external","cwd":"/home/user/claude-prospector"}
 {"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"4."}],"model":"claude-sonnet-4-6","usage":{"input_tokens":10,"output_tokens":2,"cache_creation_input_tokens":0,"cache_read_input_tokens":0}},"uuid":"a-001","timestamp":"2026-04-20T15:00:01.000Z","sessionId":"sess-nostop"}

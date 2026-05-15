@@ -5,9 +5,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from claude_usage.aggregator import AggregateResult, aggregate
-from claude_usage.parser import parse_sessions
-from claude_usage.renderer import render
+from claude_prospector.aggregator import AggregateResult, aggregate
+from claude_prospector.parser import parse_sessions
+from claude_prospector.renderer import render
 
 # U+2192 RIGHTWARDS ARROW — the candidate separator for nested agent path keys.
 # Phase 0 Task 0.1 settles whether this character survives the renderer's

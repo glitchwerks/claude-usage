@@ -3,9 +3,9 @@
 import json
 from pathlib import Path
 
-from claude_usage.aggregator import AggregateResult, aggregate
-from claude_usage.parser import parse_sessions
-from claude_usage.renderer import render
+from claude_prospector.aggregator import AggregateResult, aggregate
+from claude_prospector.parser import parse_sessions
+from claude_prospector.renderer import render
 
 
 class TestEndToEnd:
@@ -57,8 +57,8 @@ class TestSkillAdoptionE2E:
         self, sample_session_dir: Path, tmp_path: Path
     ):
         """Verify skill adoption data appears in the rendered dashboard."""
-        from claude_usage.aggregator import compute_skill_adoption
-        from claude_usage.skill_tracking import parse_skill_tracking
+        from claude_prospector.aggregator import compute_skill_adoption
+        from claude_prospector.skill_tracking import parse_skill_tracking
 
         tracking_file = sample_session_dir / "skill-tracking.jsonl"
         lines = [

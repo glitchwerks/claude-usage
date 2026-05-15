@@ -9,9 +9,9 @@ from pathlib import Path
 
 
 def run_cli(args: list[str], cwd: Path) -> subprocess.CompletedProcess:
-    """Helper: run `python -m claude_usage` with the given args."""
+    """Helper: run `python -m claude_prospector` with the given args."""
     return subprocess.run(
-        [sys.executable, "-m", "claude_usage", *args],
+        [sys.executable, "-m", "claude_prospector", *args],
         capture_output=True,
         text=True,
         cwd=str(cwd),

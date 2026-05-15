@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from claude_usage.skill_tracking import (
+from claude_prospector.skill_tracking import (
     parse_skill_tracking,
     extract_skills_from_prompt,
     build_skill_allowlist,

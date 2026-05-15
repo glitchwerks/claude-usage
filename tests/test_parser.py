@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from claude_usage.parser import (
+from claude_prospector.parser import (
     decode_project_hash,
     parse_sessions,
     _parse_session,
