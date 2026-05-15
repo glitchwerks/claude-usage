@@ -1,4 +1,4 @@
-"""Dashboard subcommand for claude-usage."""
+"""Dashboard subcommand for claude-prospector."""
 
 from __future__ import annotations
 
@@ -9,10 +9,10 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-from claude_usage.aggregator import aggregate
-from claude_usage.parser import parse_sessions
-from claude_usage.renderer import render
-from claude_usage.skill_tracking import parse_skill_tracking
+from claude_prospector.aggregator import aggregate
+from claude_prospector.parser import parse_sessions
+from claude_prospector.renderer import render
+from claude_prospector.skill_tracking import parse_skill_tracking
 
 
 def _parse_window(window_str: str) -> float:
@@ -168,7 +168,7 @@ def run(args: argparse.Namespace) -> int:
     # Skill adoption tracking (from PreToolUse hook log)
     passed_events, invoked_events = parse_skill_tracking(args.data_dir)
     if passed_events or invoked_events:
-        from claude_usage.aggregator import compute_skill_adoption
+        from claude_prospector.aggregator import compute_skill_adoption
 
         result.by_skill_adoption = compute_skill_adoption(
             passed_events,

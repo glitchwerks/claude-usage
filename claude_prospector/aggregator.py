@@ -6,8 +6,8 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 
-from claude_usage.constants import AGENT_PATH_SEPARATOR as _AGENT_PATH_SEPARATOR
-from claude_usage.models import (
+from claude_prospector.constants import AGENT_PATH_SEPARATOR as _AGENT_PATH_SEPARATOR
+from claude_prospector.models import (
     MessageRecord,
     SessionRecord,
     SkillPassedEvent,
@@ -15,7 +15,7 @@ from claude_usage.models import (
 )
 
 #: Delimiter joining agent_path segments into a by_agent key string.
-#: Sourced from :mod:`claude_usage.constants`; re-exported here so
+#: Sourced from :mod:`claude_prospector.constants`; re-exported here so
 #: existing callers that import this name from ``aggregator`` continue
 #: to work unchanged.
 AGENT_PATH_SEPARATOR: str = _AGENT_PATH_SEPARATOR

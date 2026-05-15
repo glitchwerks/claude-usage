@@ -1,7 +1,7 @@
 # tests/test_models.py
 from datetime import datetime, timezone
 
-from claude_usage.models import (
+from claude_prospector.models import (
     MessageRecord,
     SessionRecord,
     SkillPassedEvent,

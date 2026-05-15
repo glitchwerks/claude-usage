@@ -113,7 +113,7 @@ def _derive_project(entries: list[dict], slug_fallback: str | None = None) -> st
     Returns:
         A non-empty project name string.
     """
-    from claude_usage.parser import decode_project_hash
+    from claude_prospector.parser import decode_project_hash
 
     # Strategy 1: cwd field on any entry.
     for entry in entries:

@@ -10,7 +10,7 @@ from tempfile import NamedTemporaryFile
 
 from jinja2 import Environment, FileSystemLoader
 
-from claude_usage.aggregator import AggregateResult
+from claude_prospector.aggregator import AggregateResult
 
 _TEMPLATE_DIR = Path(__file__).resolve().parent.parent / "templates"
 
@@ -60,7 +60,7 @@ def render(
     if output_path is None:
         tmp = NamedTemporaryFile(
             suffix=".html",
-            prefix="claude-usage-",
+            prefix="claude-prospector-",
             delete=False,
             mode="w",
             encoding="utf-8",

@@ -3,7 +3,7 @@ requires = ["setuptools>=68.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "claude-usage"
+name = "claude-prospector"
 version = "0.3.0"
 description = "Parse Claude Code session data and generate an interactive HTML usage dashboard"
 requires-python = ">=3.10"
@@ -18,7 +18,7 @@ dev = [
 ]
 
 [tool.setuptools.packages.find]
-include = ["claude_usage*"]
+include = ["claude_prospector*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -1,10 +1,10 @@
-"""CLI entry point for claude-usage — subparser dispatcher."""
+"""CLI entry point for claude-prospector — subparser dispatcher."""
 
 from __future__ import annotations
 
 import sys
 
-from claude_usage.cli import dashboard, session_summary
+from claude_prospector.cli import dashboard, session_summary
 
 
 def main() -> None:
@@ -12,10 +12,10 @@ def main() -> None:
     import argparse
 
     parser = argparse.ArgumentParser(
-        prog="claude-usage",
+        prog="claude-prospector",
         description=(
             "Claude Code token usage tools. "
-            "Run 'claude-usage <subcommand> --help' for details."
+            "Run 'claude-prospector <subcommand> --help' for details."
         ),
     )
     subparsers = parser.add_subparsers(

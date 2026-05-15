@@ -1,4 +1,4 @@
-"""Shared constants for the claude_usage package.
+"""Shared constants for the claude_prospector package.
 
 Centralises values that must be identical across multiple modules so
 there is a single source of truth for each.
