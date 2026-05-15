@@ -6,6 +6,33 @@ Parse Claude Code session data and generate an interactive HTML dashboard showin
 
 Claude Code tracks three billing buckets (5h rolling, 7d rolling, Sonnet-only 7d) but provides no per-agent or per-skill visibility. This tool reads Claude Code's local JSONL session files and generates a dashboard that breaks down where your tokens are going.
 
+## Install as a Claude Code Plugin
+
+The easiest way to use `claude-prospector` is as a Claude Code plugin — no manual
+cloning or path configuration required.
+
+```bash
+claude plugin marketplace add glitchwerks/plugins
+claude plugin install claude-prospector@glitchwerks
+```
+
+### Python prerequisite
+
+The plugin invokes `python -m claude_prospector` under the hood, so the Python
+package must be installed in the environment Claude Code runs in. Two options:
+
+**From a local clone** (recommended for development):
+
+```bash
+uv pip install -e .
+```
+
+**Directly from GitHub** (no clone needed):
+
+```bash
+uv pip install "git+https://github.com/glitchwerks/claude-prospector.git"
+```
+
 ## Install
 
 ```bash

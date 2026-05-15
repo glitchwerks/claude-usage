@@ -1,0 +1,13 @@
+{
+  "name": "claude-prospector",
+  "version": "0.4.0",
+  "description": "Claude Code token usage dashboard with three-bucket billing windows (5h / 7d / Sonnet-7d), per-model and per-agent attribution including nested sub-agent paths, and skill adoption tracking.",
+  "author": {
+    "name": "Christopher Beaulieu",
+    "email": "cmb_dev@outlook.com"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/glitchwerks/claude-prospector",
+  "repository": "https://github.com/glitchwerks/claude-prospector",
+  "keywords": ["claude-code", "usage", "tokens", "billing", "dashboard", "observability"]
+}
