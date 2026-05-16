@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import sys
 
-from claude_prospector.cli import dashboard, session_summary
+import claude_prospector
+from claude_prospector.cli import config, dashboard, session_summary
 
 
 def main() -> None:
@@ -18,6 +19,11 @@ def main() -> None:
             "Run 'claude-prospector <subcommand> --help' for details."
         ),
     )
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"claude-prospector {claude_prospector.__version__}",
+    )
     subparsers = parser.add_subparsers(
         dest="subcommand",
         metavar="subcommand",
@@ -25,6 +31,7 @@ def main() -> None:
 
     dashboard.build_parser(subparsers)
     session_summary.build_parser(subparsers)
+    config.build_parser(subparsers)
 
     args = parser.parse_args()
 
@@ -37,6 +44,9 @@ def main() -> None:
 
     if args.subcommand == "session-summary":
         sys.exit(session_summary.run(args))
+
+    if args.subcommand == "config":
+        sys.exit(config.run(args))
 
 
 if __name__ == "__main__":
