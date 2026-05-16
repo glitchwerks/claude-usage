@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- `/usage-dashboard` slash command at `commands/usage-dashboard.md` (#80).
+- `skills/usage-dashboard/SKILL.md` — bare dashboard-regeneration sibling to `usage-analysis`, triggered by phrases like "regenerate the dashboard". (Originally landed as a `/usage-dashboard` slash command in #80, then ported to a skill in #92 before the v0.4.0 tag.)
 - `hooks/skill-tracker.py` PreToolUse hook with per-day JSONL rotation under `~/.claude/claude-prospector/skill-tracking/<YYYY-MM-DD>.jsonl` — caps unbounded file growth, eliminates concurrent-append contention, and enforces a 90-day retention window (#84).
 - `hooks/dashboard-regen.py` Stop hook that regenerates the usage dashboard automatically after each session, with opt-in via `{"autoregen": true}` in `config.json` (#90).
 - Three failure HTML pages for the Stop hook covering missing Python interpreter, version mismatch, and regen failure (#90).

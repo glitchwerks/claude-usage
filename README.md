@@ -28,12 +28,13 @@ package must be importable in the environment Claude Code uses. Install with eit
 
 ## What the plugin provides
 
-The v0.4.0 plugin scaffold is in place; the following capabilities ship in the planned plugin phases:
+v0.4.0 ships the full plugin surface:
 
 - **Interactive dashboard** — HTML report with three-bucket budget gauges (5h / 7d / Sonnet-7d), per-model donut and bar charts, per-agent token attribution with nested sub-agent tracing, skill-invocation counts, and per-project breakdowns.
-- **Conversational analysis skill** (`usage-analysis`) — answers questions like "am I close to my Sonnet limit?", "where are my tokens going?", and "which agent uses the most?" with concrete recommendations. Coming in a later plugin phase.
-- **Slash command** (`/usage-dashboard`) — explicit invocation for power users. Coming in a later plugin phase.
-- **Stop hook (opt-in)** — auto-regenerate the dashboard after every session. Coming in a later plugin phase.
+- **`usage-analysis` skill** — conversational analysis with recommendations. Answers questions like "am I close to my Sonnet limit?", "where are my tokens going?", and "which agent uses the most?". Triggered by natural-language phrases.
+- **`usage-dashboard` skill** — bare regeneration surface. Triggered by phrases like "regenerate the dashboard" or "rebuild my usage dashboard"; writes the HTML file and reports the path, without interpreting the data.
+- **`skill-tracker` hook** (PreToolUse, always-on) — logs `Skill` tool-use events to `~/.claude/claude-prospector/skill-tracking/<YYYY-MM-DD>.jsonl` for the `by_skill` and skill-passed-vs-invoked analyses.
+- **`dashboard-regen` hook** (Stop, opt-in) — auto-regenerates the dashboard after every session when enabled via `python -m claude_prospector config --enable-autoregen`.
 
 ## Development / Standalone CLI
 
