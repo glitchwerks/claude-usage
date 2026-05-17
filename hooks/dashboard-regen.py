@@ -3,9 +3,27 @@
 
 This script is registered as a Claude Code Stop hook in hooks/hooks.json.
 It fires at the end of every session. Whether it actually does work is
-controlled by the ``autoregen`` key in the plugin config file — when
-``autoregen`` is false (or the config file is absent) the hook exits
-immediately as a no-op so users who haven't opted in are unaffected.
+controlled by the ``autoregen`` setting — when false (or not set) the hook
+exits immediately as a no-op so users who haven't opted in are unaffected.
+
+Autoregen gate (priority order):
+    1. ``--autoregen <value>`` CLI argument — set by hooks.json via the
+       ``${user_config.autoregen}`` substitution. The value is parsed by
+       :func:`_parse_autoregen_arg`; truthy strings are ``"true"``,
+       ``"1"``, ``"yes"`` (case-insensitive). Anything else (including
+       empty string — the value when the user has never configured
+       userConfig) is falsy. This is the primary gate for plugin users.
+    2. Legacy ``${CLAUDE_PLUGIN_DATA}/config.json`` — used when the
+       ``--autoregen`` argument is absent (manual invocation, pre-#99
+       users). Reads the ``autoregen`` boolean from the JSON file.
+
+Migration notice:
+    When the ``--autoregen`` arg IS provided (new hook path) and a legacy
+    ``config.json`` is present at the config path, the hook writes a
+    one-time ``[migration]`` notice to ``hook.log`` advising the user to
+    toggle via the plugin manager. A sibling sentinel file
+    ``config.json.migrated-notice`` suppresses the notice after the first
+    run. The legacy ``config.json`` is never deleted.
 
 The Stop hook is registered unconditionally in hooks.json rather than
 conditionally based on config because:
@@ -35,6 +53,7 @@ Exit codes:
 
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import subprocess
@@ -110,6 +129,74 @@ def _hook_log_path() -> Path:
     if env:
         return Path(env)
     return _base_dir() / "hook.log"
+
+
+# ---------------------------------------------------------------------------
+# Autoregen arg parsing
+# ---------------------------------------------------------------------------
+
+
+_TRUTHY_VALUES: frozenset[str] = frozenset({"true", "1", "yes"})
+
+
+def _parse_autoregen_arg(value: str) -> bool:
+    """Parse the --autoregen CLI argument value as a boolean.
+
+    Treats ``"true"``, ``"1"``, and ``"yes"`` (case-insensitive) as truthy.
+    Everything else — including the empty string (the substitution result
+    when the user has never configured ``userConfig.autoregen``) — is
+    falsy.
+
+    Args:
+        value: The raw string passed via ``--autoregen``.
+
+    Returns:
+        True when the value is a recognised truthy token; False otherwise.
+    """
+    return value.strip().lower() in _TRUTHY_VALUES
+
+
+# ---------------------------------------------------------------------------
+# Migration notice
+# ---------------------------------------------------------------------------
+
+
+def _maybe_log_migration_notice(cfg_path: Path) -> None:
+    """Write a one-time migration notice to hook.log if legacy config exists.
+
+    When a legacy ``config.json`` is detected alongside the new
+    ``--autoregen`` CLI-arg path, log a single ``[migration]`` advisory
+    to ``hook.log`` so the user knows to switch to the plugin-manager UX.
+    A sentinel file ``config.json.migrated-notice`` is created after the
+    first notice to prevent log spam on subsequent sessions.
+
+    The legacy ``config.json`` is never deleted.
+
+    Args:
+        cfg_path: Path to the (possibly-absent) legacy config file.
+    """
+    if not cfg_path.exists():
+        return
+
+    sentinel = cfg_path.parent / (cfg_path.name + ".migrated-notice")
+    if sentinel.exists():
+        return  # Already notified; skip to avoid log spam.
+
+    try:
+        log_path = _hook_log_path()
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        # Append so the migration line is not lost if _log() writes later.
+        with open(log_path, "a", encoding="utf-8") as f:
+            f.write(
+                f"[{_timestamp()}] [migration] legacy config.json detected"
+                f" at {cfg_path}; autoregen is now managed via plugin"
+                " user-config — toggle via"
+                " /plugin reconfigure claude-prospector\n"
+            )
+        # Touch sentinel to suppress future notices.
+        sentinel.touch()
+    except Exception:
+        pass
 
 
 # ---------------------------------------------------------------------------
@@ -334,16 +421,45 @@ def _log(message: str) -> None:
 # ---------------------------------------------------------------------------
 
 
+def _parse_args() -> argparse.Namespace:
+    """Parse CLI arguments for the Stop hook.
+
+    Returns:
+        Parsed namespace with ``autoregen`` attribute (str or None).
+    """
+    parser = argparse.ArgumentParser(
+        description="claude-prospector Stop hook",
+        add_help=False,  # Hook must never error on unknown args from harness.
+    )
+    parser.add_argument(
+        "--autoregen",
+        default=None,
+        metavar="VALUE",
+        help=(
+            "Autoregen gate from userConfig substitution. "
+            "Truthy: 'true', '1', 'yes' (case-insensitive). "
+            "Omit to fall back to legacy config.json."
+        ),
+    )
+    # Use parse_known_args so unexpected harness-injected flags don't crash.
+    ns, _ = parser.parse_known_args()
+    return ns
+
+
 def main() -> int:
     """Entry point for the Stop hook. Returns process exit code.
 
     Steps:
     1. Consume stdin (Stop hook payload — content not needed).
-    2. Load config. If autoregen != true, exit 0 as a no-op.
-    3. Check manifest version vs. package version; write mismatch page on
+    2. Determine autoregen state:
+       a. If ``--autoregen`` arg was given: parse it as truthy/falsy.
+          Also check for legacy config.json and log one-time notice.
+       b. Otherwise: fall back to reading config.json (legacy path).
+    3. If autoregen is not enabled, exit 0 as a no-op.
+    4. Check manifest version vs. package version; write mismatch page on
        downgrade.
-    4. Run regen subprocess. Write failure page on non-zero exit.
-    5. Log success and exit 0.
+    5. Run regen subprocess. Write failure page on non-zero exit.
+    6. Log success and exit 0.
 
     Returns:
         Always 0 — hook failures must not propagate to the session runner.
@@ -352,22 +468,31 @@ def main() -> int:
         # Step 1: consume stdin so the process closes cleanly.
         _stdin = sys.stdin.read()
 
-        # Step 2: load config.
+        # Step 2: determine autoregen state.
+        ns = _parse_args()
         cfg_path = _config_path()
-        if not cfg_path.exists():
-            return 0  # No config → autoregen not enabled.
 
-        try:
-            cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
-        except Exception:
-            return 0  # Malformed config → no-op.
+        if ns.autoregen is not None:
+            # New path: --autoregen arg was supplied by hooks.json via
+            # ${user_config.autoregen} substitution.
+            autoregen_enabled = _parse_autoregen_arg(ns.autoregen)
+        else:
+            # Legacy path: --autoregen was not supplied (manual invocation).
+            if not cfg_path.exists():
+                return 0  # No config → autoregen not enabled.
+            try:
+                cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
+            except Exception:
+                return 0  # Malformed config → no-op.
+            autoregen_enabled = bool(cfg.get("autoregen"))
 
-        if not cfg.get("autoregen"):
-            return 0  # autoregen disabled.
+        # Step 3: gate on autoregen.
+        if not autoregen_enabled:
+            return 0
 
         dashboard = _dashboard_path()
 
-        # Step 3: version-pin check.
+        # Step 4: version-pin check.
         plugin_root_env = os.environ.get("CLAUDE_PLUGIN_ROOT", "")
         manifest_ver: str | None = None
         if plugin_root_env:
@@ -438,8 +563,12 @@ def main() -> int:
             _write_page(dashboard, _regen_failed_page(regen_result.stderr))
             return 0
 
-        # Step 5: log success.
+        # Step 6: log success, then append one-time migration notice if needed.
+        # _log() uses write mode (truncates), so migration notice must be
+        # appended afterwards via _maybe_log_migration_notice()'s append mode.
         _log(f"Dashboard regenerated successfully → {dashboard}")
+        if ns.autoregen is not None:
+            _maybe_log_migration_notice(cfg_path)
 
     except Exception as exc:
         sys.stderr.write(f"[dashboard-regen] unexpected error: {exc}\n")
