@@ -55,12 +55,24 @@ from pathlib import Path
 def _base_dir() -> Path:
     """Return the claude-prospector base directory.
 
+    Three-tier resolution (highest priority first):
+
+    1. ``CLAUDE_PROSPECTOR_BASE_DIR`` — explicit test/override path.
+    2. ``CLAUDE_PLUGIN_DATA`` — Anthropic plugin state dir (used as-is).
+    3. Legacy ``~/.claude/claude-prospector/`` — pre-migration fallback.
+
+    Migration logic is intentionally omitted here; it runs only from
+    ``claude_prospector.paths.base_dir()`` so it happens exactly once.
+
     Returns:
-        Path from CLAUDE_PROSPECTOR_BASE_DIR env var, or the default.
+        Resolved base directory path.
     """
-    env = os.environ.get("CLAUDE_PROSPECTOR_BASE_DIR")
-    if env:
-        return Path(env)
+    env_override = os.environ.get("CLAUDE_PROSPECTOR_BASE_DIR")
+    if env_override:
+        return Path(env_override)
+    plugin_data = os.environ.get("CLAUDE_PLUGIN_DATA")
+    if plugin_data:
+        return Path(plugin_data)
     return Path.home() / ".claude" / "claude-prospector"
 
 

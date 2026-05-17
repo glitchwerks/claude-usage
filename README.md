@@ -33,8 +33,16 @@ v0.4.0 ships the full plugin surface:
 - **Interactive dashboard** — HTML report with three-bucket budget gauges (5h / 7d / Sonnet-7d), per-model donut and bar charts, per-agent token attribution with nested sub-agent tracing, skill-invocation counts, and per-project breakdowns.
 - **`usage-analysis` skill** — conversational analysis with recommendations. Answers questions like "am I close to my Sonnet limit?", "where are my tokens going?", and "which agent uses the most?". Triggered by natural-language phrases.
 - **`usage-dashboard` skill** — bare regeneration surface. Triggered by phrases like "regenerate the dashboard" or "rebuild my usage dashboard"; writes the HTML file and reports the path, without interpreting the data.
-- **`skill-tracker` hook** (PreToolUse, always-on) — logs `Skill` tool-use events to `~/.claude/claude-prospector/skill-tracking/<YYYY-MM-DD>.jsonl` for the `by_skill` and skill-passed-vs-invoked analyses.
+- **`skill-tracker` hook** (PreToolUse, always-on) — logs `Skill` tool-use events to the state directory for the `by_skill` and skill-passed-vs-invoked analyses.
 - **`dashboard-regen` hook** (Stop, opt-in) — auto-regenerates the dashboard after every session when enabled via `python -m claude_prospector config --enable-autoregen`.
+
+### State storage
+
+When running as a plugin, state (config, dashboard HTML, hook log, skill-tracking JSONL files) is stored under the `${CLAUDE_PLUGIN_DATA}` directory — the Anthropic-documented persistent state location that survives plugin updates.
+
+Users upgrading from v0.4.0 get a **one-time automatic migration**: on the first session after upgrade, any existing files from `~/.claude/claude-prospector/` are moved into `${CLAUDE_PLUGIN_DATA}` and the legacy directory is removed.
+
+For testing or non-plugin use, set `CLAUDE_PROSPECTOR_BASE_DIR` to override the location entirely (takes priority over `${CLAUDE_PLUGIN_DATA}`).
 
 ## Development / Standalone CLI
 
