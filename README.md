@@ -34,11 +34,39 @@ v0.4.0 ships the full plugin surface:
 - **`usage-analysis` skill** — conversational analysis with recommendations. Answers questions like "am I close to my Sonnet limit?", "where are my tokens going?", and "which agent uses the most?". Triggered by natural-language phrases.
 - **`usage-dashboard` skill** — bare regeneration surface. Triggered by phrases like "regenerate the dashboard" or "rebuild my usage dashboard"; writes the HTML file and reports the path, without interpreting the data.
 - **`skill-tracker` hook** (PreToolUse, always-on) — logs `Skill` tool-use events to the state directory for the `by_skill` and skill-passed-vs-invoked analyses.
-- **`dashboard-regen` hook** (Stop, opt-in) — auto-regenerates the dashboard after every session when enabled via `python -m claude_prospector config --enable-autoregen`.
+- **`dashboard-regen` hook** (Stop, opt-in) — auto-regenerates the dashboard after every session when the `autoregen` user-config is enabled via the plugin manager (`/plugin reconfigure claude-prospector` or at install time).
+
+### Configuration (autoregen)
+
+The `dashboard-regen` Stop hook is opt-in. Toggle it through the Claude Code
+plugin manager — no manual file edits required:
+
+```
+/plugin reconfigure claude-prospector
+```
+
+You will be prompted to enable or disable `autoregen`. You can also set it at
+install time when the plugin manager shows the initial configuration prompt.
+
+To inspect the current plugin state, use the read-only CLI:
+
+```bash
+python -m claude_prospector config --show
+```
+
+This prints the legacy `config.json` contents if present. The authoritative
+value is the `autoregen` setting shown in the plugin manager.
+
+> **Upgrading from v0.4.x?** If you previously ran
+> `python -m claude_prospector config --enable-autoregen`, your old
+> `config.json` is still readable via `--show`. The hook will log a one-time
+> advisory message to `hook.log` the first time it runs with the new
+> user-config path. Re-toggle via `/plugin reconfigure claude-prospector` to
+> move to the managed setting. The old `config.json` file is not deleted.
 
 ### State storage
 
-When running as a plugin, state (config, dashboard HTML, hook log, skill-tracking JSONL files) is stored under the `${CLAUDE_PLUGIN_DATA}` directory — the Anthropic-documented persistent state location that survives plugin updates.
+When running as a plugin, state (dashboard HTML, hook log, skill-tracking JSONL files) is stored under the `${CLAUDE_PLUGIN_DATA}` directory — the Anthropic-documented persistent state location that survives plugin updates.
 
 Users upgrading from v0.4.0 get a **one-time automatic migration**: on the first session after upgrade, any existing files from `~/.claude/claude-prospector/` are moved into `${CLAUDE_PLUGIN_DATA}` and the legacy directory is removed.
 

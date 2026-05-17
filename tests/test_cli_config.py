@@ -4,14 +4,16 @@ All subprocess invocations redirect the config file path via the
 ``CLAUDE_PROSPECTOR_CONFIG`` environment variable so tests never touch
 the real home directory.
 
+After issue #99, the config subcommand is read-only (--show only).
+The --enable-autoregen and --disable-autoregen flags are removed; autoregen
+is now managed via the plugin manager user-config (userConfig.autoregen).
+
 Covers:
-- ``--enable-autoregen`` creates the config file with autoregen=true.
-- ``--disable-autoregen`` sets autoregen=false (and creates file if absent).
 - ``--show`` prints the current config; reports "(no config file yet)" when
   absent.
-- Mutual exclusion: combining two flags exits non-zero.
+- ``--show`` prints user-config guidance when no config file exists.
+- ``--enable-autoregen`` and ``--disable-autoregen`` are rejected (unknown).
 - No flags: prints usage hint, exits 0.
-- ``--show`` preserves extra keys in the config file.
 """
 
 from __future__ import annotations
@@ -60,77 +62,34 @@ def _run_config(
 
 
 # ---------------------------------------------------------------------------
-# --enable-autoregen
+# Removed flags (issue #99 — now rejected as unknown)
 # ---------------------------------------------------------------------------
 
 
-class TestEnableAutoregen:
-    """Tests for the --enable-autoregen flag."""
+class TestRemovedFlags:
+    """--enable-autoregen and --disable-autoregen are removed in v0.5.x."""
 
-    def test_creates_config_file_when_absent(self, tmp_path: Path) -> None:
-        """--enable-autoregen creates config.json when it doesn't exist."""
-        cfg_path = tmp_path / "config.json"
-        assert not cfg_path.exists()
-        result = _run_config("--enable-autoregen", config_path=cfg_path)
-        assert result.returncode == 0, result.stderr
-        assert cfg_path.exists()
-
-    def test_sets_autoregen_true(self, tmp_path: Path) -> None:
-        """--enable-autoregen writes autoregen=true to the config file."""
+    def test_enable_autoregen_exits_nonzero(self, tmp_path: Path) -> None:
+        """--enable-autoregen is no longer a valid flag; must exit non-zero."""
         cfg_path = tmp_path / "config.json"
         result = _run_config("--enable-autoregen", config_path=cfg_path)
-        assert result.returncode == 0, result.stderr
-        cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
-        assert cfg["autoregen"] is True
+        assert (
+            result.returncode != 0
+        ), "--enable-autoregen should be rejected after demotion to read-only"
 
-    def test_preserves_other_keys(self, tmp_path: Path) -> None:
-        """--enable-autoregen preserves existing keys in the config file."""
-        cfg_path = tmp_path / "config.json"
-        cfg_path.write_text(json.dumps({"some_other_key": 42}), encoding="utf-8")
-        _run_config("--enable-autoregen", config_path=cfg_path)
-        cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
-        assert cfg["some_other_key"] == 42
-        assert cfg["autoregen"] is True
-
-    def test_overwrites_false_to_true(self, tmp_path: Path) -> None:
-        """--enable-autoregen flips autoregen from false to true."""
-        cfg_path = tmp_path / "config.json"
-        cfg_path.write_text(json.dumps({"autoregen": False}), encoding="utf-8")
-        _run_config("--enable-autoregen", config_path=cfg_path)
-        cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
-        assert cfg["autoregen"] is True
-
-
-# ---------------------------------------------------------------------------
-# --disable-autoregen
-# ---------------------------------------------------------------------------
-
-
-class TestDisableAutoregen:
-    """Tests for the --disable-autoregen flag."""
-
-    def test_creates_config_file_when_absent(self, tmp_path: Path) -> None:
-        """--disable-autoregen creates config.json when it doesn't exist."""
+    def test_disable_autoregen_exits_nonzero(self, tmp_path: Path) -> None:
+        """--disable-autoregen is no longer a valid flag; must exit non-zero."""
         cfg_path = tmp_path / "config.json"
         result = _run_config("--disable-autoregen", config_path=cfg_path)
-        assert result.returncode == 0, result.stderr
-        assert cfg_path.exists()
+        assert (
+            result.returncode != 0
+        ), "--disable-autoregen should be rejected after demotion to read-only"
 
-    def test_sets_autoregen_false(self, tmp_path: Path) -> None:
-        """--disable-autoregen writes autoregen=false."""
+    def test_enable_autoregen_does_not_write_config(self, tmp_path: Path) -> None:
+        """--enable-autoregen must not create or modify config.json."""
         cfg_path = tmp_path / "config.json"
-        result = _run_config("--disable-autoregen", config_path=cfg_path)
-        assert result.returncode == 0, result.stderr
-        cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
-        assert cfg["autoregen"] is False
-
-    def test_flips_true_to_false(self, tmp_path: Path) -> None:
-        """--disable-autoregen flips autoregen from true to false."""
-        cfg_path = tmp_path / "config.json"
-        cfg_path.write_text(json.dumps({"autoregen": True}), encoding="utf-8")
-        _run_config("--disable-autoregen", config_path=cfg_path)
-        cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
-        assert cfg["autoregen"] is False
+        _run_config("--enable-autoregen", config_path=cfg_path)
+        assert not cfg_path.exists(), "Removed flag must not side-effect config.json"
 
 
 # ---------------------------------------------------------------------------
@@ -174,30 +133,14 @@ class TestShow:
         result = _run_config("--show", config_path=cfg_path)
         assert result.stdout.strip() == "{}"
 
-
-# ---------------------------------------------------------------------------
-# Mutual exclusion
-# ---------------------------------------------------------------------------
-
-
-class TestMutualExclusion:
-    """Tests for the mutually-exclusive flag group."""
-
-    def test_enable_and_disable_together_exits_nonzero(self, tmp_path: Path) -> None:
-        """--enable-autoregen and --disable-autoregen together must fail."""
-        cfg_path = tmp_path / "config.json"
-        result = _run_config(
-            "--enable-autoregen",
-            "--disable-autoregen",
-            config_path=cfg_path,
-        )
-        assert result.returncode != 0
-
-    def test_enable_and_show_together_exits_nonzero(self, tmp_path: Path) -> None:
-        """--enable-autoregen and --show together must fail."""
-        cfg_path = tmp_path / "config.json"
-        result = _run_config("--enable-autoregen", "--show", config_path=cfg_path)
-        assert result.returncode != 0
+    def test_show_mentions_plugin_manager_when_config_absent(
+        self, tmp_path: Path
+    ) -> None:
+        """--show with no config mentions plugin manager for configuration."""
+        cfg_path = tmp_path / "nonexistent-config.json"
+        result = _run_config("--show", config_path=cfg_path)
+        combined = result.stdout + result.stderr
+        assert "plugin" in combined.lower() or "reconfigure" in combined.lower()
 
 
 # ---------------------------------------------------------------------------
@@ -214,9 +157,9 @@ class TestNoFlags:
         result = _run_config(config_path=cfg_path)
         assert result.returncode == 0
 
-    def test_no_flags_mentions_flags(self, tmp_path: Path) -> None:
-        """'config' with no flags must mention the available flags."""
+    def test_no_flags_mentions_show(self, tmp_path: Path) -> None:
+        """'config' with no flags must mention --show."""
         cfg_path = tmp_path / "config.json"
         result = _run_config(config_path=cfg_path)
         combined = result.stdout + result.stderr
-        assert "autoregen" in combined
+        assert "--show" in combined

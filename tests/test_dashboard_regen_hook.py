@@ -10,6 +10,12 @@ The contract verified for each test:
 - autoregen=true + regen success: dashboard.html exists with non-zero size.
 - autoregen=true + regen failure: writes "regen failed" page with stderr.
 
+New (issue #99) contracts:
+- --autoregen true/false/1/yes/no: hook parses the CLI arg as the gate.
+- --autoregen absent: hook falls back to legacy config.json.
+- Migration notice: one-time log entry when legacy config.json is present.
+- Sentinel file prevents duplicate migration notices.
+
 Hook input:
     The Stop hook payload is read from stdin. The hook ignores the payload
     content — only autoregen config and the python subprocess matter. We
@@ -100,25 +106,73 @@ def _make_env(
 def _run_hook(
     env: dict[str, str],
     stdin_payload: dict | None = None,
+    autoregen_arg: str | None = None,
 ) -> subprocess.CompletedProcess[str]:
     """Invoke dashboard-regen.py as a subprocess.
 
     Args:
         env: Environment dict (from _make_env).
         stdin_payload: JSON payload to write to stdin. Defaults to ``{}``.
+        autoregen_arg: If given, passes ``--autoregen <value>`` to the hook.
+            When None, the hook is invoked without the flag (legacy path).
 
     Returns:
         CompletedProcess with stdout, stderr, returncode.
     """
     payload = json.dumps(stdin_payload or {})
+    cmd = [sys.executable, str(_HOOK_PATH)]
+    if autoregen_arg is not None:
+        cmd += ["--autoregen", autoregen_arg]
     return subprocess.run(
-        [sys.executable, str(_HOOK_PATH)],
+        cmd,
         input=payload,
         capture_output=True,
         text=True,
         env=env,
         cwd=str(_WORKTREE),
     )
+
+
+def _make_env_no_config(
+    tmp_path: Path,
+    *,
+    manifest_version: str = _MANIFEST_VERSION,
+    extra: dict[str, str] | None = None,
+) -> dict[str, str]:
+    """Build env pointing at non-existent config (no config.json created).
+
+    Useful for testing the --autoregen CLI-arg path where config.json
+    should not exist.
+
+    Args:
+        tmp_path: pytest temporary directory.
+        manifest_version: Version string to embed in the plugin manifest.
+        extra: Extra vars to merge (last wins).
+
+    Returns:
+        Environment dict suitable for ``subprocess.run(..., env=...)``.
+    """
+    cfg_path = tmp_path / "config.json"  # intentionally not created
+
+    dashboard_file = tmp_path / "dashboard.html"
+    hook_log = tmp_path / "hook.log"
+
+    plugin_root = tmp_path / "plugin-root"
+    plugin_root.mkdir(parents=True, exist_ok=True)
+    (plugin_root / "plugin.json").write_text(
+        json.dumps({"version": manifest_version}), encoding="utf-8"
+    )
+
+    env = {
+        **os.environ,
+        "CLAUDE_PROSPECTOR_CONFIG": str(cfg_path),
+        "CLAUDE_PROSPECTOR_DASHBOARD": str(dashboard_file),
+        "CLAUDE_PROSPECTOR_HOOK_LOG": str(hook_log),
+        "CLAUDE_PLUGIN_ROOT": str(plugin_root),
+    }
+    if extra:
+        env.update(extra)
+    return env
 
 
 # ---------------------------------------------------------------------------
@@ -304,3 +358,170 @@ class TestRegenFailure:
         env["CLAUDE_PROSPECTOR_FAIL_REGEN"] = "1"
         result = _run_hook(env)
         assert result.returncode == 0, result.stderr
+
+
+# ---------------------------------------------------------------------------
+# --autoregen CLI argument parsing (issue #99)
+# ---------------------------------------------------------------------------
+
+
+class TestAutoregenArgParsing:
+    """--autoregen CLI arg gates the hook; truthy/falsy values are parsed."""
+
+    def test_autoregen_true_enables_regen(self, tmp_path: Path) -> None:
+        """--autoregen true triggers dashboard generation (success path)."""
+        env = _make_env_no_config(tmp_path)
+        result = _run_hook(env, autoregen_arg="true")
+        assert result.returncode == 0, result.stderr
+        dashboard = tmp_path / "dashboard.html"
+        assert dashboard.exists(), (
+            f"Dashboard not created with --autoregen true. "
+            f"stderr: {result.stderr!r}"
+        )
+
+    def test_autoregen_false_is_noop(self, tmp_path: Path) -> None:
+        """--autoregen false skips dashboard generation."""
+        env = _make_env_no_config(tmp_path)
+        result = _run_hook(env, autoregen_arg="false")
+        assert result.returncode == 0, result.stderr
+        assert not (tmp_path / "dashboard.html").exists()
+
+    def test_autoregen_1_enables_regen(self, tmp_path: Path) -> None:
+        """--autoregen 1 is treated as truthy."""
+        env = _make_env_no_config(tmp_path)
+        result = _run_hook(env, autoregen_arg="1")
+        assert result.returncode == 0, result.stderr
+        assert (tmp_path / "dashboard.html").exists()
+
+    def test_autoregen_yes_enables_regen(self, tmp_path: Path) -> None:
+        """--autoregen yes is treated as truthy."""
+        env = _make_env_no_config(tmp_path)
+        result = _run_hook(env, autoregen_arg="yes")
+        assert result.returncode == 0, result.stderr
+        assert (tmp_path / "dashboard.html").exists()
+
+    def test_autoregen_true_case_insensitive(self, tmp_path: Path) -> None:
+        """--autoregen TRUE (uppercase) is treated as truthy."""
+        env = _make_env_no_config(tmp_path)
+        result = _run_hook(env, autoregen_arg="TRUE")
+        assert result.returncode == 0, result.stderr
+        assert (tmp_path / "dashboard.html").exists()
+
+    def test_autoregen_empty_string_is_noop(self, tmp_path: Path) -> None:
+        """--autoregen '' (empty string) is treated as falsy."""
+        env = _make_env_no_config(tmp_path)
+        result = _run_hook(env, autoregen_arg="")
+        assert result.returncode == 0, result.stderr
+        assert not (tmp_path / "dashboard.html").exists()
+
+    def test_autoregen_0_is_noop(self, tmp_path: Path) -> None:
+        """--autoregen 0 is treated as falsy."""
+        env = _make_env_no_config(tmp_path)
+        result = _run_hook(env, autoregen_arg="0")
+        assert result.returncode == 0, result.stderr
+        assert not (tmp_path / "dashboard.html").exists()
+
+
+# ---------------------------------------------------------------------------
+# Legacy config.json fallback (issue #99)
+# ---------------------------------------------------------------------------
+
+
+class TestLegacyConfigFallback:
+    """When --autoregen is absent, the hook falls back to config.json."""
+
+    def test_no_arg_with_autoregen_true_in_config_enables_regen(
+        self, tmp_path: Path
+    ) -> None:
+        """No --autoregen arg + config.json autoregen=true triggers regen."""
+        env = _make_env(tmp_path, autoregen=True)
+        result = _run_hook(env)  # no autoregen_arg
+        assert result.returncode == 0, result.stderr
+        assert (tmp_path / "dashboard.html").exists()
+
+    def test_no_arg_with_autoregen_false_in_config_is_noop(
+        self, tmp_path: Path
+    ) -> None:
+        """No --autoregen arg + config.json autoregen=false is a no-op."""
+        env = _make_env(tmp_path, autoregen=False)
+        result = _run_hook(env)
+        assert result.returncode == 0, result.stderr
+        assert not (tmp_path / "dashboard.html").exists()
+
+    def test_no_arg_no_config_is_noop(self, tmp_path: Path) -> None:
+        """No --autoregen arg + no config.json at all is a no-op."""
+        env = _make_env_no_config(tmp_path)
+        result = _run_hook(env)
+        assert result.returncode == 0, result.stderr
+        assert not (tmp_path / "dashboard.html").exists()
+
+
+# ---------------------------------------------------------------------------
+# Migration notice (issue #99)
+# ---------------------------------------------------------------------------
+
+
+class TestMigrationNotice:
+    """Legacy config.json triggers a one-time migration notice in hook.log."""
+
+    def test_migration_notice_logged_when_legacy_config_present(
+        self, tmp_path: Path
+    ) -> None:
+        """First run with legacy config.json writes [migration] to hook.log."""
+        # Pass --autoregen true so the hook proceeds past the autoregen gate,
+        # then checks for the legacy file.
+        env = _make_env(tmp_path, autoregen=True)
+        _run_hook(env, autoregen_arg="true")
+        hook_log = tmp_path / "hook.log"
+        assert hook_log.exists(), "hook.log should exist after successful regen"
+        content = hook_log.read_text(encoding="utf-8")
+        assert (
+            "[migration]" in content
+        ), f"Expected [migration] prefix in hook.log. Got: {content!r}"
+
+    def test_migration_notice_not_logged_when_no_legacy_config(
+        self, tmp_path: Path
+    ) -> None:
+        """No legacy config.json means no [migration] line in hook.log."""
+        env = _make_env_no_config(tmp_path)
+        _run_hook(env, autoregen_arg="true")
+        hook_log = tmp_path / "hook.log"
+        if hook_log.exists():
+            content = hook_log.read_text(encoding="utf-8")
+            assert (
+                "[migration]" not in content
+            ), "Should not log [migration] when no legacy config present"
+
+    def test_migration_notice_written_only_once(self, tmp_path: Path) -> None:
+        """Second run does not repeat the [migration] notice (sentinel guards)."""
+        env = _make_env(tmp_path, autoregen=True)
+
+        # First run — should write notice.
+        _run_hook(env, autoregen_arg="true")
+        hook_log_after_first = (tmp_path / "hook.log").read_text(encoding="utf-8")
+        assert "[migration]" in hook_log_after_first
+
+        # Second run — hook.log is truncated each run; if sentinel works, the
+        # migration line must NOT appear this time.
+        _run_hook(env, autoregen_arg="true")
+        hook_log_after_second = (tmp_path / "hook.log").read_text(encoding="utf-8")
+        assert (
+            "[migration]" not in hook_log_after_second
+        ), "Migration notice should not appear on second run (sentinel check)"
+
+    def test_sentinel_file_created_after_first_run(self, tmp_path: Path) -> None:
+        """Sentinel file config.json.migrated-notice is created after notice."""
+        env = _make_env(tmp_path, autoregen=True)
+        _run_hook(env, autoregen_arg="true")
+        sentinel = tmp_path / "config.json.migrated-notice"
+        assert (
+            sentinel.exists()
+        ), "Expected sentinel file 'config.json.migrated-notice' to be created"
+
+    def test_legacy_config_not_deleted(self, tmp_path: Path) -> None:
+        """Migration must NOT delete the legacy config.json file."""
+        env = _make_env(tmp_path, autoregen=True)
+        cfg_path = tmp_path / "config.json"
+        assert cfg_path.exists(), "Precondition: config.json must exist"
+        _run_hook(env, autoregen_arg="true")
+        assert cfg_path.exists(), "config.json must not be deleted during migration"
