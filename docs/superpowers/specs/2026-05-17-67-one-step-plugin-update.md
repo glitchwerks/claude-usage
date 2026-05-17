@@ -19,6 +19,18 @@ touches:
 
 Scoping issue: [#105](https://github.com/glitchwerks/claude-prospector/issues/105). Parent feature issue: [#67](https://github.com/glitchwerks/claude-prospector/issues/67).
 
+## Revision 5 (2026-05-17)
+
+Addresses 5 actionable findings from `project-reviewer` Rev 4 (1 BLOCKING + 4 CONCERN; the 5 NITs are deferred):
+
+- **BLOCKING-1** — Added explicit cross-reference between AC1 and AC4 stating the `_VERSION_RE` regex update in `tests/test_version_flag.py` MUST land in the **same commit** as the `__init__.py` manifest fallback. Without this, an implementer doing AC1 first will see `pytest` go green→red mid-implementation and may misdiagnose the failure.
+- **CONCERN-2** — Replaced the dead-YAML `# (fixture contents per the test_dashboard_regen_hook.py harness conventions)` placeholder in the CI snippet with an actual concrete fixture-seed `run:` block. The existing test harness uses an **env-var-driven config**, not a session-log JSONL fixture (verified by reading `tests/test_dashboard_regen_hook.py:L51-L103` — `_make_env` creates `config.json` with `{"autoregen": true}` plus a manifest under `CLAUDE_PLUGIN_ROOT`, and `TestRegenSuccess.test_dashboard_file_created` proves the regen path succeeds with an empty data dir, so no usage-log fixture is needed). The CI step now seeds the same shape.
+- **CONCERN-3** — Tightened the step-8 post-condition to require **both** assertions: `'vendor' in jinja2.__file__` AND `jinja2.__file__.startswith(os.environ['GITHUB_WORKSPACE'])`. This eliminates the false-positive risk where an unrelated `vendor/` substring elsewhere on `sys.path` would satisfy the bare substring check.
+- **CONCERN-4** — Tightened AC3 prose to clarify scope: the new CI job verifies **vendor isolation + cross-OS bash behavior**; Mechanism A's `subprocess.run(..., env=...)` PYTHONPATH injection is covered separately by `tests/test_vendored_import.py` and is NOT exercised by the CI YAML.
+- **CONCERN-5** — Added an explicit one-sentence note in AC4 stating that deletion of the pre-existing `dashboard-regen.py:L499` path bug in this change set constitutes sufficient resolution; no separate tracking issue is filed because it would only ever close against this same PR.
+
+NITs from Rev 4 are intentionally skipped — they are not load-bearing and do not gate implementation.
+
 ## Revision 4 (2026-05-17)
 
 Addresses 10 findings from `project-reviewer` Rev 3:
@@ -128,7 +140,8 @@ try:
     __version__ = version("claude-prospector")
 except PackageNotFoundError:
     # Plugin-cache install has no .dist-info — fall back to the plugin manifest.
-    # See AC4 for rationale.
+    # See AC4 for rationale and for the matching `_VERSION_RE` test update
+    # (which MUST land in the same commit — see "Commit atomicity" note below).
     import json
     _manifest = Path(__file__).resolve().parent.parent / ".claude-plugin" / "plugin.json"
     try:
@@ -182,6 +195,15 @@ Only with all four in place does the test actually exercise the regen path from 
 
 **Verification:** `tests/test_vendored_import.py` (new) — spawn the dashboard subprocess in an isolated env (`PYTHONPATH=`, no site-packages jinja2 in the test venv) and assert (a) the dashboard renders, (b) `cwd` does not matter, (c) when a stub jinja2 is *added* to site-packages, the vendored copy still wins (Mechanism B), (d) when a user `PYTHONPATH` is set to a different `claude_prospector` checkout, the plugin-root copy still wins (Mechanism A ordering).
 
+#### Commit atomicity: AC1 and AC4 `_VERSION_RE` update MUST land together
+
+Updating `_VERSION_RE` in `tests/test_version_flag.py` (per AC4 Files-Kept) is **REQUIRED in the same commit** as the `__init__.py` manifest fallback introduced here in AC1. Splitting the changes across commits leaves the suite red in between:
+
+- If AC1's `__init__.py` change lands first, `--version` will return `0.0.0+unknown` in the no-`.dist-info` test environment, and the existing `_VERSION_RE` regex (which does not admit that sentinel) will fail.
+- If AC4's regex update lands first, the regex is broader than what the current `__init__.py` produces — harmless, but cosmetically odd.
+
+The correct ordering is **one atomic commit** containing both the `__init__.py` manifest fallback and the `_VERSION_RE` regex update. An implementer doing AC1 first and running `pytest` between commits will hit a green→red transition and may mis-debug it as a regression rather than a sequencing artifact.
+
 ### AC2: No `uv pip install` in user-facing install docs
 
 **Files:**
@@ -223,6 +245,11 @@ plugin-invocation:
   env:
     CLAUDE_PLUGIN_ROOT: ${{ github.workspace }}
     CLAUDE_PLUGIN_DATA: ${{ runner.temp }}/plugin-data
+    # CLAUDE_PROSPECTOR_* paths mirror the shape used by the test harness in
+    # tests/test_dashboard_regen_hook.py:_make_env (verified 2026-05-17).
+    CLAUDE_PROSPECTOR_DASHBOARD: ${{ runner.temp }}/plugin-data/dashboard.html
+    CLAUDE_PROSPECTOR_HOOK_LOG: ${{ runner.temp }}/plugin-data/hook.log
+    CLAUDE_PROSPECTOR_BASE_DIR: ${{ runner.temp }}/plugin-data
   steps:
     - uses: actions/checkout@v4
 
@@ -238,10 +265,18 @@ plugin-invocation:
         source .ci-venv/Scripts/activate 2>/dev/null || source .ci-venv/bin/activate
         ! python -c "import jinja2" 2>/dev/null
 
-    - name: Seed minimal usage-log fixture
+    - name: Seed plugin-data dir and minimal env fixture
+      # The hook's regen path (TestRegenSuccess in tests/test_dashboard_regen_hook.py)
+      # needs only: (1) CLAUDE_PLUGIN_ROOT containing .claude-plugin/plugin.json
+      # (already true — github.workspace is the checkout); (2) writable output dirs
+      # for dashboard + hook log + base dir. No session-log JSONL fixture is required
+      # — the existing test TestRegenSuccess.test_dashboard_file_created proves the
+      # regen path succeeds against an empty data dir. The CLI arg --autoregen true
+      # bypasses the need for a config.json.
       run: |
         mkdir -p "${CLAUDE_PLUGIN_DATA}"
-        # (fixture contents per the test_dashboard_regen_hook.py harness conventions)
+        # Sanity-check the manifest is where the hook (and AC1's __init__.py fallback) expect it.
+        test -f "${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json"
 
     - name: Invoke the hook end-to-end
       run: |
@@ -250,14 +285,19 @@ plugin-invocation:
 
     - name: Assert the dashboard rendered
       run: |
-        test -f "${CLAUDE_PLUGIN_DATA}/dashboard.html"
-        grep -q "<!-- jinja2-rendered -->" "${CLAUDE_PLUGIN_DATA}/dashboard.html"
+        test -f "${CLAUDE_PROSPECTOR_DASHBOARD}"
+        grep -q "<!-- jinja2-rendered -->" "${CLAUDE_PROSPECTOR_DASHBOARD}"
 
     - name: Vendor-isolation post-condition — vendored jinja2 is what imports
       run: |
         source .ci-venv/Scripts/activate 2>/dev/null || source .ci-venv/bin/activate
         PYTHONPATH="${{ github.workspace }}" python -c "import jinja2; print(jinja2.__file__)"
-        PYTHONPATH="${{ github.workspace }}" python -c "import jinja2; assert 'vendor' in jinja2.__file__, jinja2.__file__"
+        # Two assertions, both required:
+        #   1. The 'vendor' substring rules out site-packages jinja2.
+        #   2. The startswith(workspace) check rules out a false positive from
+        #      an unrelated 'vendor/' directory elsewhere on sys.path. Together
+        #      they pin the resolved module to ${{ github.workspace }}/claude_prospector/vendor/...
+        PYTHONPATH="${{ github.workspace }}" python -c "import os, jinja2; assert 'vendor' in jinja2.__file__ and jinja2.__file__.startswith(os.environ['GITHUB_WORKSPACE']), jinja2.__file__"
 ```
 
 Notes on the snippet:
@@ -270,7 +310,9 @@ Notes on the snippet:
 
 - Existing `lint` and `test` jobs keep `uv pip install --system -e ".[dev]"` for their respective purposes.
 
-**Verification:** the new job is the verification. Failure on either OS blocks merge. The precondition step is what distinguishes "the hook worked" from "the hook worked because of vendor isolation specifically."
+**Verification scope:** the new CI job verifies **vendor isolation** (precondition + post-condition steps) and **cross-OS bash behavior** of the hook invocation path on `ubuntu-latest` + `windows-latest`. Failure on either OS blocks merge. The precondition step is what distinguishes "the hook worked" from "the hook worked because of vendor isolation specifically."
+
+**Out of scope for this CI job:** Mechanism A's `subprocess.run(..., env=PYTHONPATH=...)` injection inside `hooks/dashboard-regen.py` is **not** directly exercised here — it is covered by `tests/test_vendored_import.py` (per AC1's Verification block), which spawns the dashboard child subprocess from a tmp cwd with controlled PYTHONPATH variations. The CI job invokes the hook outer process, which reaches the regen child via Mechanism A in passing, but the test that *asserts on the env-injection behavior* lives at the unit-test layer. This split is intentional: CI verifies cross-OS shell behavior at the integration layer; unit tests verify env-construction logic at the function layer.
 
 ### AC4: Version-pin failure machinery becomes structurally unreachable — **delete, do not keep as defense-in-depth**
 
@@ -290,6 +332,8 @@ _manifest = Path(__file__).resolve().parent.parent / ".claude-plugin" / "plugin.
 
 (`__file__` is `claude_prospector/__init__.py` → `.parent.parent` is the plugin root → then `.claude-plugin/plugin.json`.) Cross-check this when implementing.
 
+Deletion in this change set resolves the bug; no separate issue is filed — it would only close against this same PR. The deletion (AC4) and the correct-path replacement (AC1 manifest fallback) are concurrent, so the bug never appears in any merged-and-then-fixed state worth tracking independently.
+
 **Files (keep):**
 - `hooks/dashboard-regen.py:L322-L341` — `_python_not_found_page`. Reachable.
 - `hooks/dashboard-regen.py:L373-L396` — `_regen_failed_page`. Reachable.
@@ -299,6 +343,8 @@ _manifest = Path(__file__).resolve().parent.parent / ".claude-plugin" / "plugin.
   _VERSION_RE = re.compile(r"\d+\.\d+\.\d+|0\.0\.0\+local|0\.0\.0\+unknown")
   ```
   This is exactly the path the new CI job exercises (no `.dist-info` in `.ci-venv`), so the regex bug would surface there first if left unfixed.
+
+  **Commit atomicity (back-reference to AC1):** this `_VERSION_RE` update MUST land in the **same commit** as AC1's `__init__.py` manifest fallback. The fallback returns `0.0.0+unknown` in the no-`.dist-info` path; the regex must admit that sentinel or the test suite goes red between commits. See AC1 § "Commit atomicity" for full rationale.
 
 #### Manifest version fallback in `__init__.py`
 
