@@ -12,25 +12,31 @@ touches:
   - tests/test_dashboard_regen_hook.py
   - tests/test_version_flag.py
   - tests/test_vendored_import.py
+  - tests/test_readme_no_pip_install.py
 ---
 
 # #67 — One-step plugin update (design pass, 2026-05-17)
 
 Scoping issue: [#105](https://github.com/glitchwerks/claude-prospector/issues/105). Parent feature issue: [#67](https://github.com/glitchwerks/claude-prospector/issues/67).
 
+## Revision 3 (2026-05-17)
+
+Addresses 10 findings from `project-reviewer` Rev 2 (NIT-11 was already clean — no action):
+
+- **BLOCKING-1** — CI precondition + post-condition steps gain `shell: bash` so the `!`-negation and assertion both run under Git Bash on `windows-latest`.
+- **BLOCKING-2** — Step 8 post-condition rewritten: runs `PYTHONPATH=$PWD python -c "import jinja2; print(jinja2.__file__)"` then a follow-up `assert 'vendor' in jinja2.__file__` so the assertion can actually succeed and proves the vendored copy is what imports.
+- **BLOCKING-3** — Vendor relocated **inside the package** at `claude_prospector/vendor/`. Cascades through `_vendor = Path(__file__).parent / "vendor"`, `[tool.setuptools.package-data] "claude_prospector" = ["vendor/**/*"]`, import-chain narrative, CI post-condition `jinja2.__file__` expected pattern, and the `touches:` list (which already names `claude_prospector/__init__.py`).
+- **CONCERN-4** — `tests/test_version_flag.py` regex update spelled out in AC4 "Kept files" — fixes quantifier typo and adds the `0.0.0+unknown` sentinel.
+- **CONCERN-5** — `tests/test_readme_no_pip_install.py` added to `touches:`.
+- **CONCERN-6** — PowerShell diagnostic in `_regen_failed_page` uses child-scope `& { $env:PYTHONPATH = ...; python -m ... }` to avoid poisoning the user's shell.
+- **CONCERN-7** — New outer-hook no-cwd test: runs `hooks/dashboard-regen.py` itself from `tempfile.gettempdir()` to catch any latent `os.getcwd()` dependency in the hook process (not just the child subprocess).
+- **NIT-8** — Import-chain step 3 now uses `${os.pathsep}` notation to be cross-platform-explicit.
+- **NIT-9** — "pass `cwd=None`" reworded to "omit the `cwd` keyword argument entirely".
+- **NIT-10** — Manifest fallback `except Exception` gains a one-line prose explanation of the deliberate breadth (covers `PackageNotFoundError`, `FileNotFoundError`, `JSONDecodeError`, `KeyError`).
+
 ## Revision 2 (2026-05-17)
 
-Addresses 9 findings from `project-reviewer`:
-
-- **BLOCKING-1** — AC1 rewritten to make explicit that PYTHONPATH injection (on the subprocess `env`) and `__init__.py` `sys.path.insert(0, vendor)` are **two cooperating mechanisms**, not alternatives. Added numbered import-chain walkthrough.
-- **BLOCKING-2** — Added explicit implementation note: drop the `cwd=str(Path(sys.executable).parent.parent.parent)` argument at both `subprocess.run` sites; new test asserts no cwd dependency.
-- **CONCERN-3** — Decision: add a `plugin.json` version-field fallback in `__init__.py` (`importlib.metadata.PackageNotFoundError` → read manifest JSON). Defended in AC4.
-- **CONCERN-4** — CI verification step now asserts `! python -c "import jinja2"` succeeds (i.e. import fails) *before* the hook runs, in a clean venv, so vendor isolation is actually proven.
-- **CONCERN-5** — `_regen_failed_page` rewritten to suggest `PYTHONPATH=${CLAUDE_PLUGIN_ROOT} python -m claude_prospector dashboard --window 7d`. Added to AC2 file list.
-- **CONCERN-6** — Explicit `PYTHONPATH = str(plugin_root) + os.pathsep + os.environ.get("PYTHONPATH", "")` ordering called out at both call sites; new test sets a user PYTHONPATH and asserts the plugin root still wins.
-- **NIT-7** — Test file standardized to `tests/test_vendored_import.py` in frontmatter + body.
-- **NIT-8** — `pyproject.toml` added to `touches:`.
-- **NIT-9** — Follow-up Makefile + CONTRIBUTING.md mentions in § 7 struck (no issue numbers, no commitment).
+Addressed 9 findings from `project-reviewer` Rev 1: import-chain narrative, drop-cwd note, manifest version fallback, CI precondition for vendor isolation, `_regen_failed_page` PYTHONPATH guidance, prepend-ordering test, test-file naming, `pyproject.toml` in `touches:`, and removal of speculative follow-ups.
 
 ## 1. Why a fresh pass
 
@@ -99,7 +105,7 @@ Mechanism A gets the child *into* `claude_prospector/__init__.py`. Once there, t
 import sys
 from pathlib import Path
 
-_vendor = Path(__file__).resolve().parent.parent / "vendor"
+_vendor = Path(__file__).resolve().parent / "vendor"   # in-package: claude_prospector/vendor/
 if _vendor.is_dir():
     sys.path.insert(0, str(_vendor))   # prepend, so vendor wins over site-packages
 
@@ -115,16 +121,22 @@ except PackageNotFoundError:
     try:
         __version__ = json.loads(_manifest.read_text(encoding="utf-8")).get("version", "0.0.0+unknown")
     except Exception:
+        # Deliberately broad: catches PackageNotFoundError (no .dist-info),
+        # FileNotFoundError (manifest missing), JSONDecodeError (manifest corrupt),
+        # and KeyError (no "version" key). All four collapse to the same sentinel —
+        # there is nothing else useful to do here, and the sentinel is itself the signal.
         __version__ = "0.0.0+unknown"
 ```
+
+**Why in-package vendor and not a top-level `vendor/`?** A top-level `vendor/` sibling to `claude_prospector/` is not a Python package and is not reachable through `[tool.setuptools.packages.find].include = ["claude_prospector*"]` — editable installs silently drop it, and Mechanism B's `if _vendor.is_dir()` falls through in dev. Placing `vendor/` inside the package tree (`claude_prospector/vendor/`) makes it reachable through `[tool.setuptools.package-data] "claude_prospector" = ["vendor/**/*"]` AND keeps the plugin-cache invocation path identical (verbatim repo copy under `${CLAUDE_PLUGIN_ROOT}/claude_prospector/vendor/`).
 
 #### Import chain (numbered)
 
 1. SessionEnd fires. Claude Code invokes `python "${CLAUDE_PLUGIN_ROOT}/hooks/dashboard-regen.py"`.
 2. `dashboard-regen.py` runs in `sys.executable` with its own (stdlib-only) imports. It reads `os.environ["CLAUDE_PLUGIN_ROOT"]` at `L496`.
-3. `dashboard-regen.py` reaches the regen call site (`L544-L560`). It constructs `env` with `PYTHONPATH=${CLAUDE_PLUGIN_ROOT}:$PYTHONPATH` and calls `subprocess.run([sys.executable, "-m", "claude_prospector", "dashboard", ...], env=env, cwd=None)`.
+3. `dashboard-regen.py` reaches the regen call site (`L544-L560`). It constructs `env` with `PYTHONPATH=${CLAUDE_PLUGIN_ROOT}${os.pathsep}$PYTHONPATH` (`:` on POSIX, `;` on Windows) and calls `subprocess.run([sys.executable, "-m", "claude_prospector", "dashboard", ...], env=env)` — `cwd` keyword omitted entirely.
 4. The child Python starts, sees `PYTHONPATH`, finds `claude_prospector/` under the plugin root, and begins executing `claude_prospector/__init__.py`.
-5. `__init__.py` line 1 (after stdlib imports) inserts `${CLAUDE_PLUGIN_ROOT}/vendor` at `sys.path[0]`.
+5. `__init__.py` line 1 (after stdlib imports) inserts `${CLAUDE_PLUGIN_ROOT}/claude_prospector/vendor` at `sys.path[0]`.
 6. Anything in `claude_prospector` (or its transitive imports) that does `import jinja2` now resolves the vendored copy first, regardless of what's in site-packages.
 
 **Drop either mechanism and the system fails:**
@@ -133,14 +145,14 @@ except PackageNotFoundError:
 
 #### Drop the `cwd=` workaround
 
-Today, both `subprocess.run` sites pass `cwd=str(Path(sys.executable).parent.parent.parent)`. That was a workaround for the pre-E1 world where `claude_prospector` had to be `pip install`-ed to be importable; the `cwd` arg was an attempt to land the child in a directory where the installed package could be found. With Mechanism A in place, the `cwd` trick is **dead logic** — at best a no-op, at worst misleading future readers into thinking it's load-bearing. **Drop it.** Pass `cwd=None` (or omit the argument) at both call sites. The new test at `tests/test_vendored_import.py` will assert no cwd dependency by running the subprocess with `cwd=tempfile.gettempdir()` and verifying success.
+Today, both `subprocess.run` sites pass `cwd=str(Path(sys.executable).parent.parent.parent)`. That was a workaround for the pre-E1 world where `claude_prospector` had to be `pip install`-ed to be importable; the `cwd` arg was an attempt to land the child in a directory where the installed package could be found. With Mechanism A in place, the `cwd` trick is **dead logic** — at best a no-op, at worst misleading future readers into thinking it's load-bearing. **Drop it.** Omit the `cwd` keyword argument entirely at both call sites. The new test at `tests/test_vendored_import.py` will assert no cwd dependency by running the child subprocess with `cwd=tempfile.gettempdir()` and verifying success; a complementary test (per Rev 2 CONCERN-7) runs the **outer hook** `hooks/dashboard-regen.py` itself with `cwd=tempfile.gettempdir()` via `subprocess.run([sys.executable, str(hook_path)], cwd=tempfile.gettempdir(), ...)` to catch any latent `os.getcwd()` dependency in the hook process — not just the child.
 
 #### Files
 
-- `vendor/jinja2/` and `vendor/markupsafe/` (new) — vendored source dirs. Strip `tests/`, `docs/`, `*.dist-info/RECORD` to minimize bloat.
-- `claude_prospector/__init__.py` — `sys.path.insert(0, vendor)` bootstrap (Mechanism B) **and** `importlib.metadata` → `plugin.json` version fallback per AC4.
+- `claude_prospector/vendor/jinja2/` and `claude_prospector/vendor/markupsafe/` (new) — vendored source dirs **inside the package tree**. Strip `tests/`, `docs/`, `*.dist-info/RECORD` to minimize bloat.
+- `claude_prospector/__init__.py` — `sys.path.insert(0, vendor)` bootstrap with `_vendor = Path(__file__).parent / "vendor"` (Mechanism B) **and** `importlib.metadata` → `plugin.json` version fallback per AC4.
 - `hooks/dashboard-regen.py:L508-L514, L544-L560` — add `env=` kwarg with PYTHONPATH-prepend (Mechanism A); drop the `cwd=...` arg.
-- `pyproject.toml` — add `[tool.setuptools.package-data]` to include `vendor/**` in the wheel for the dev-install case. The plugin-cache invocation path already gets `vendor/` because it's a verbatim copy of the repo.
+- `pyproject.toml` — add `[tool.setuptools.package-data]` with `"claude_prospector" = ["vendor/**/*"]` to include the vendored tree in the wheel for the dev-install case. The plugin-cache invocation path already gets `claude_prospector/vendor/` because it's a verbatim copy of the repo.
 
 **Verification:** `tests/test_vendored_import.py` (new) — spawn the dashboard subprocess in an isolated env (`PYTHONPATH=`, no site-packages jinja2 in the test venv) and assert (a) the dashboard renders, (b) `cwd` does not matter, (c) when a stub jinja2 is *added* to site-packages, the vendored copy still wins (Mechanism B), (d) when a user `PYTHONPATH` is set to a different `claude_prospector` checkout, the plugin-root copy still wins (Mechanism A ordering).
 
@@ -154,7 +166,7 @@ Today, both `subprocess.run` sites pass `cwd=str(Path(sys.executable).parent.par
   ```
   PYTHONPATH="${CLAUDE_PLUGIN_ROOT}" python -m claude_prospector dashboard --window 7d
   ```
-  (POSIX form; document the PowerShell equivalent `$env:PYTHONPATH = $env:CLAUDE_PLUGIN_ROOT; python -m claude_prospector dashboard --window 7d` in a parenthetical.)
+  (POSIX form; document the PowerShell equivalent using a **child-scope script block** so the env mutation dies with the scope and does not poison the user's shell: `& { $env:PYTHONPATH = $env:CLAUDE_PLUGIN_ROOT; python -m claude_prospector dashboard --window 7d }`.)
 - `.claude-plugin/plugin.json` — no `uv pip install` reference today; no change beyond the version bump.
 
 **Verification:** `tests/test_readme_no_pip_install.py` — assert the README install section contains no `uv pip install` (with an allowlist for the contributor section).
@@ -166,11 +178,16 @@ Today, both `subprocess.run` sites pass `cwd=str(Path(sys.executable).parent.par
   1. Check out the repo.
   2. Run `actions/setup-python@v5` for bare Python. **Do not** run `uv pip install -e ".[dev]"` for the system Python.
   3. Create a fresh venv (`python -m venv .ci-venv`) — explicitly empty, no inherited site-packages.
-  4. **Vendor-isolation precondition:** activate `.ci-venv` and run `! python -c "import jinja2" 2>/dev/null`, asserting exit nonzero. This proves the venv has no jinja2 before the hook runs. If this step succeeds (i.e. jinja2 *is* importable), the vendor-isolation guarantee is unproven on this runner and the job must fail.
+  4. **Vendor-isolation precondition:** activate `.ci-venv` and run `! python -c "import jinja2" 2>/dev/null`, asserting exit nonzero. This step **must declare `shell: bash`** in the workflow YAML so it executes under Git Bash on both `ubuntu-latest` and `windows-latest` — GitHub Actions defaults `run:` to PowerShell on Windows, where the `!`-negation is invalid syntax and the step would silently pass or error in the wrong direction. This proves the venv has no jinja2 before the hook runs. If this step succeeds (i.e. jinja2 *is* importable), the vendor-isolation guarantee is unproven on this runner and the job must fail.
   5. Set `CLAUDE_PLUGIN_ROOT=$PWD` and `CLAUDE_PLUGIN_DATA=$RUNNER_TEMP/plugin-data`.
   6. Invoke `python hooks/dashboard-regen.py --autoregen true` after seeding a minimal usage-log fixture.
   7. Assert the resulting dashboard HTML exists and contains expected jinja2-rendered markers.
-  8. After success, run `python -c "import jinja2; print(jinja2.__file__)"` in the same venv and assert the path is under `${CLAUDE_PLUGIN_ROOT}/vendor/` — proves the *vendored* copy is what ran, not some accidental fallback.
+  8. **Vendor-isolation post-condition** (also `shell: bash`): the bare `.ci-venv` still has no jinja2 on its own `sys.path` (step 4 proved this). To prove the *vendored* copy is what actually rendered the dashboard, run:
+     ```bash
+     PYTHONPATH=$PWD python -c "import jinja2; print(jinja2.__file__)"
+     PYTHONPATH=$PWD python -c "import jinja2, sys; assert 'vendor' in jinja2.__file__, jinja2.__file__"
+     ```
+     The first line prints the resolved path for the CI log; the second asserts the substring `vendor` appears in it — matching `${CLAUDE_PLUGIN_ROOT}/claude_prospector/vendor/jinja2/__init__.py`. Without the `PYTHONPATH=$PWD` prefix the import fails outright (the venv has no jinja2 and no `claude_prospector` either), which is exactly the precondition step 4 established.
 - Existing `lint` and `test` jobs keep `uv pip install --system -e ".[dev]"` for their respective purposes.
 - Matrix: `[ubuntu-latest, windows-latest]`, Python 3.10.
 
@@ -190,7 +207,11 @@ The version-mismatch path in `dashboard-regen.py:L495-L531` exists because the P
 - `hooks/dashboard-regen.py:L322-L341` — `_python_not_found_page`. Reachable.
 - `hooks/dashboard-regen.py:L373-L396` — `_regen_failed_page`. Reachable.
 - `claude_prospector/__init__.py:L5-L10` — `__version__` resolution, **with manifest fallback** (see below).
-- `tests/test_version_flag.py:L46-L67` — `--version` CLI tests.
+- `tests/test_version_flag.py:L46-L67` — `--version` CLI tests. **Regex update required:** the current `_VERSION_RE` has a quantifier typo (`[\d]` instead of `[\d]+` on the patch segment) and does not match the new `0.0.0+unknown` sentinel returned by the manifest fallback's outer `except`. Replace with:
+  ```python
+  _VERSION_RE = re.compile(r"[\d]+\.[\d]+\.[\d]+|0\.0\.0\+local|0\.0\.0\+unknown")
+  ```
+  This is exactly the path the new CI job exercises (no `.dist-info` in `.ci-venv`), so the regex bug would surface there first if left unfixed.
 
 #### Manifest version fallback in `__init__.py`
 
