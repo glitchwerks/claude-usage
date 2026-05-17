@@ -32,11 +32,35 @@ from pathlib import Path
 # ---------------------------------------------------------------------------
 
 
+def _base_dir() -> Path:
+    """Return the claude-prospector base directory.
+
+    Three-tier resolution (highest priority first):
+
+    1. ``CLAUDE_PROSPECTOR_BASE_DIR`` — explicit test/override path.
+    2. ``CLAUDE_PLUGIN_DATA`` — Anthropic plugin state dir (used as-is).
+    3. Legacy ``~/.claude/claude-prospector/`` — pre-migration fallback.
+
+    Migration logic is intentionally omitted here; it runs only from
+    ``claude_prospector.paths.base_dir()`` so it happens exactly once.
+
+    Returns:
+        Resolved base directory path.
+    """
+    env_override = os.environ.get("CLAUDE_PROSPECTOR_BASE_DIR")
+    if env_override:
+        return Path(env_override)
+    plugin_data = os.environ.get("CLAUDE_PLUGIN_DATA")
+    if plugin_data:
+        return Path(plugin_data)
+    return Path.home() / ".claude" / "claude-prospector"
+
+
 def _tracking_dir() -> Path:
     """Return the directory used for per-day tracking JSONL files.
 
     Reads ``CLAUDE_PROSPECTOR_SKILL_TRACKING_DIR`` from the environment;
-    falls back to ``~/.claude/claude-prospector/skill-tracking/``.
+    falls back to ``<base_dir>/skill-tracking/``.
 
     Returns:
         Path to the tracking directory (not guaranteed to exist yet).
@@ -44,14 +68,14 @@ def _tracking_dir() -> Path:
     env_val = os.environ.get("CLAUDE_PROSPECTOR_SKILL_TRACKING_DIR")
     if env_val:
         return Path(env_val)
-    return Path.home() / ".claude" / "claude-prospector" / "skill-tracking"
+    return _base_dir() / "skill-tracking"
 
 
 def _log_path() -> Path:
     """Return the path to the hook diagnostic log file.
 
     Reads ``CLAUDE_PROSPECTOR_HOOK_LOG`` from the environment; falls back
-    to ``~/.claude/claude-prospector/hook.log``.
+    to ``<base_dir>/hook.log``.
 
     Returns:
         Path to the hook log file (not guaranteed to exist yet).
@@ -59,7 +83,7 @@ def _log_path() -> Path:
     env_val = os.environ.get("CLAUDE_PROSPECTOR_HOOK_LOG")
     if env_val:
         return Path(env_val)
-    return Path.home() / ".claude" / "claude-prospector" / "hook.log"
+    return _base_dir() / "hook.log"
 
 
 # ---------------------------------------------------------------------------
