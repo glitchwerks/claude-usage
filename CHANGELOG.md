@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-05-17
+
+### Changed
+
+- State-storage path resolution now uses a three-tier `base_dir()` lookup: `CLAUDE_PROSPECTOR_BASE_DIR` (explicit override) → `CLAUDE_PLUGIN_DATA` (Anthropic plugin state dir, populated by Claude Code at plugin load) → legacy `~/.claude/claude-prospector/` (fallback). Both hook scripts replicate the resolver inline to remain stdlib-only. (#96)
+
+### Added
+
+- One-time auto-migration: when `CLAUDE_PLUGIN_DATA` is set and the legacy `~/.claude/claude-prospector/` directory has content while the new location is empty, `paths.base_dir()` moves the contents via `shutil.move` and removes the legacy dir. Idempotent (skipped if new dir is non-empty); failures are logged to `hook.log` with a `[migration]` prefix and never crash the run. (#96)
+
+[0.5.0]: https://github.com/glitchwerks/claude-prospector/releases/tag/v0.5.0
+
 ## [0.4.0] - 2026-05-16
 
 ### Added
