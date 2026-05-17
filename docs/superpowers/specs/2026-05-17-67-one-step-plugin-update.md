@@ -19,6 +19,19 @@ touches:
 
 Scoping issue: [#105](https://github.com/glitchwerks/claude-prospector/issues/105). Parent feature issue: [#67](https://github.com/glitchwerks/claude-prospector/issues/67).
 
+## Revision 4 (2026-05-17)
+
+Addresses 10 findings from `project-reviewer` Rev 3:
+
+- **BLOCKING-1, BLOCKING-2, BLOCKING-3** — Resolved jointly by hoisting `CLAUDE_PLUGIN_ROOT` and `CLAUDE_PLUGIN_DATA` to a job-level `env:` block, declaring `shell: bash` as the job-level default for all run-steps in the new `plugin-invocation` job, and replacing every `$PWD` with `${{ github.workspace }}`. The fully resolved YAML snippet is now embedded in AC3. This eliminates the cross-step propagation problem, the PowerShell-on-Windows step-5 mismatch, and the `$PWD` ambiguity in one stroke.
+- **CONCERN-4** — Rewrote AC1's "Why in-package vendor and not top-level" paragraph. Editable installs would in fact reach a top-level `vendor/` via `__file__`-relative resolution (the existing `renderer.py:L15` proves this for `templates/`). The real load-bearing reason for in-package `vendor/` is the **wheel/sdist distribution path**: only `[tool.setuptools.package-data]` includes non-Python files in the built distribution, and `package-data` keys must name a package. A top-level `vendor/` cannot be packaged this way. The recommendation (in-package `vendor/`) is unchanged; the rationale is corrected so the implementer does not skip `package-data` thinking it is optional.
+- **CONCERN-5** — `_vendor` expression unified to `Path(__file__).resolve().parent / "vendor"` in all three locations (inline code block, import-chain narrative, AC1 Files section). Matches `renderer.py:L15` convention; symlink-safe.
+- **CONCERN-6** — `tests/test_readme_no_pip_install.py` mechanics nailed down: install-section boundary = `## Installation` heading through the next `##` heading or EOF; assertion = no line in that block matches the regex `^\s*\$?\s*uv pip install\b` (case-sensitive); allowlist = a sibling `## Development` (or similarly-named contributor) section is unconstrained.
+- **CONCERN-7** — Outer-hook no-cwd test specification now requires supplying `--autoregen true` (else the hook hits the early-return gate at `dashboard-regen.py:L490` and proves nothing), `CLAUDE_PLUGIN_ROOT`, `CLAUDE_PLUGIN_DATA` env vars (pointed at a tmp dir), and a minimal session-log fixture (or stubbed parser) so the regen path executes from the unusual cwd.
+- **NIT-8** — `[\d]+` simplified to `\d+` in the `_VERSION_RE` example.
+- **NIT-9** — Acknowledged; no action.
+- **NIT-10** — Added a one-line note in AC4 flagging that `dashboard-regen.py:L499` has a pre-existing path bug (`Path(plugin_root_env) / "plugin.json"` is wrong — manifest lives at `.claude-plugin/plugin.json`); the AC4 deletion removes the buggy line; the new `__init__.py` manifest fallback correctly uses `.claude-plugin/plugin.json`.
+
 ## Revision 3 (2026-05-17)
 
 Addresses 10 findings from `project-reviewer` Rev 2 (NIT-11 was already clean — no action):
@@ -128,7 +141,11 @@ except PackageNotFoundError:
         __version__ = "0.0.0+unknown"
 ```
 
-**Why in-package vendor and not a top-level `vendor/`?** A top-level `vendor/` sibling to `claude_prospector/` is not a Python package and is not reachable through `[tool.setuptools.packages.find].include = ["claude_prospector*"]` — editable installs silently drop it, and Mechanism B's `if _vendor.is_dir()` falls through in dev. Placing `vendor/` inside the package tree (`claude_prospector/vendor/`) makes it reachable through `[tool.setuptools.package-data] "claude_prospector" = ["vendor/**/*"]` AND keeps the plugin-cache invocation path identical (verbatim repo copy under `${CLAUDE_PLUGIN_ROOT}/claude_prospector/vendor/`).
+**Why in-package vendor and not a top-level `vendor/`?** The load-bearing reason is the **wheel/sdist distribution path**, not editable installs. Editable installs would in fact find a top-level `vendor/` through `__file__`-relative resolution — the existing `claude_prospector/renderer.py:L15` does exactly this for `templates/`, computing `Path(__file__).resolve().parent.parent / "templates"`, and it works in editable mode because `__file__` points into the source tree. So a top-level `vendor/` would *work in dev*.
+
+It would fail in the wheel/sdist path: `[tool.setuptools.package-data]` is the only mechanism that includes non-Python files in a built distribution, and its keys must name a package. A top-level `vendor/` sibling to `claude_prospector/` cannot be packaged this way and would be silently dropped from the wheel. If the plugin install path ever moves from "verbatim repo copy" to "install the wheel" (today it is the former; this could change), a top-level `vendor/` becomes invisible at runtime. Placing `vendor/` inside the package tree (`claude_prospector/vendor/`) makes it reachable through `[tool.setuptools.package-data] "claude_prospector" = ["vendor/**/*"]` for both the wheel path and the plugin-cache verbatim-copy path (`${CLAUDE_PLUGIN_ROOT}/claude_prospector/vendor/`).
+
+`package-data` is not optional polish — it is what makes the in-package location actually correct for distribution. Do not skip it.
 
 #### Import chain (numbered)
 
@@ -145,12 +162,21 @@ except PackageNotFoundError:
 
 #### Drop the `cwd=` workaround
 
-Today, both `subprocess.run` sites pass `cwd=str(Path(sys.executable).parent.parent.parent)`. That was a workaround for the pre-E1 world where `claude_prospector` had to be `pip install`-ed to be importable; the `cwd` arg was an attempt to land the child in a directory where the installed package could be found. With Mechanism A in place, the `cwd` trick is **dead logic** — at best a no-op, at worst misleading future readers into thinking it's load-bearing. **Drop it.** Omit the `cwd` keyword argument entirely at both call sites. The new test at `tests/test_vendored_import.py` will assert no cwd dependency by running the child subprocess with `cwd=tempfile.gettempdir()` and verifying success; a complementary test (per Rev 2 CONCERN-7) runs the **outer hook** `hooks/dashboard-regen.py` itself with `cwd=tempfile.gettempdir()` via `subprocess.run([sys.executable, str(hook_path)], cwd=tempfile.gettempdir(), ...)` to catch any latent `os.getcwd()` dependency in the hook process — not just the child.
+Today, both `subprocess.run` sites pass `cwd=str(Path(sys.executable).parent.parent.parent)`. That was a workaround for the pre-E1 world where `claude_prospector` had to be `pip install`-ed to be importable; the `cwd` arg was an attempt to land the child in a directory where the installed package could be found. With Mechanism A in place, the `cwd` trick is **dead logic** — at best a no-op, at worst misleading future readers into thinking it's load-bearing. **Drop it.** Omit the `cwd` keyword argument entirely at both call sites. The new test at `tests/test_vendored_import.py` will assert no cwd dependency by running the child subprocess with `cwd=tempfile.gettempdir()` and verifying success.
+
+A complementary test runs the **outer hook** `hooks/dashboard-regen.py` itself from `tempfile.gettempdir()` to catch any latent `os.getcwd()` dependency in the hook process — not just the child subprocess. **The test must drive the hook all the way through its regen path; the default early-return at `dashboard-regen.py:L490` (autoregen gate) means a naive `subprocess.run([sys.executable, str(hook_path)], cwd=tempfile.gettempdir(), ...)` would only prove the early-exit path doesn't crash.** Required test setup:
+
+- Pass `--autoregen true` as a CLI arg (or otherwise satisfy the gate at L490).
+- Supply `CLAUDE_PLUGIN_ROOT` in the child env (pointed at the repo root so `claude_prospector` and its `vendor/` are reachable).
+- Supply `CLAUDE_PLUGIN_DATA` in the child env (pointed at a tmp dir so dashboard output and any persistent state land somewhere reapable).
+- Seed a minimal session-log fixture under `CLAUDE_PLUGIN_DATA` (or monkeypatch the aggregator entry point), so the regen path has something to render.
+
+Only with all four in place does the test actually exercise the regen path from an unusual cwd. Without them it rubber-stamps a no-op.
 
 #### Files
 
 - `claude_prospector/vendor/jinja2/` and `claude_prospector/vendor/markupsafe/` (new) — vendored source dirs **inside the package tree**. Strip `tests/`, `docs/`, `*.dist-info/RECORD` to minimize bloat.
-- `claude_prospector/__init__.py` — `sys.path.insert(0, vendor)` bootstrap with `_vendor = Path(__file__).parent / "vendor"` (Mechanism B) **and** `importlib.metadata` → `plugin.json` version fallback per AC4.
+- `claude_prospector/__init__.py` — `sys.path.insert(0, vendor)` bootstrap with `_vendor = Path(__file__).resolve().parent / "vendor"` (Mechanism B) **and** `importlib.metadata` → `plugin.json` version fallback per AC4.
 - `hooks/dashboard-regen.py:L508-L514, L544-L560` — add `env=` kwarg with PYTHONPATH-prepend (Mechanism A); drop the `cwd=...` arg.
 - `pyproject.toml` — add `[tool.setuptools.package-data]` with `"claude_prospector" = ["vendor/**/*"]` to include the vendored tree in the wheel for the dev-install case. The plugin-cache invocation path already gets `claude_prospector/vendor/` because it's a verbatim copy of the repo.
 
@@ -169,29 +195,82 @@ Today, both `subprocess.run` sites pass `cwd=str(Path(sys.executable).parent.par
   (POSIX form; document the PowerShell equivalent using a **child-scope script block** so the env mutation dies with the scope and does not poison the user's shell: `& { $env:PYTHONPATH = $env:CLAUDE_PLUGIN_ROOT; python -m claude_prospector dashboard --window 7d }`.)
 - `.claude-plugin/plugin.json` — no `uv pip install` reference today; no change beyond the version bump.
 
-**Verification:** `tests/test_readme_no_pip_install.py` — assert the README install section contains no `uv pip install` (with an allowlist for the contributor section).
+**Verification:** `tests/test_readme_no_pip_install.py` — assert no `uv pip install` reference survives in the user-facing install section of the README. Mechanics:
+
+- **Section boundary:** the "install section" is the content between the `## Installation` heading (case-sensitive, anchored) and the next `## ` heading (any level-2 heading) or EOF, whichever comes first.
+- **Assertion:** no line within that block matches the regex `^\s*\$?\s*uv pip install\b` (case-sensitive). The optional leading `$` allows for shell-prompt-prefixed code samples; `\b` keeps the match anchored to the command name without requiring trailing flag specifics.
+- **Allowlist:** a sibling `## Development` section (or any other `##` section that is not `## Installation`) may freely contain `uv pip install -e ".[dev]"` and similar — only the user-facing install section is constrained. The test simply does not scan outside the section bounds defined above; no per-line allowlist logic is needed.
+- **Failure mode:** if the README is restructured such that no `## Installation` heading exists, the test fails loudly (rather than vacuously passing) — it asserts the section is found before scanning.
 
 ### AC3: CI verifies the bundled invocation path on Linux + Windows
 
 **Files:**
-- `.github/workflows/ci.yml` — add `plugin-invocation` job to the test matrix. It must:
-  1. Check out the repo.
-  2. Run `actions/setup-python@v5` for bare Python. **Do not** run `uv pip install -e ".[dev]"` for the system Python.
-  3. Create a fresh venv (`python -m venv .ci-venv`) — explicitly empty, no inherited site-packages.
-  4. **Vendor-isolation precondition:** activate `.ci-venv` and run `! python -c "import jinja2" 2>/dev/null`, asserting exit nonzero. This step **must declare `shell: bash`** in the workflow YAML so it executes under Git Bash on both `ubuntu-latest` and `windows-latest` — GitHub Actions defaults `run:` to PowerShell on Windows, where the `!`-negation is invalid syntax and the step would silently pass or error in the wrong direction. This proves the venv has no jinja2 before the hook runs. If this step succeeds (i.e. jinja2 *is* importable), the vendor-isolation guarantee is unproven on this runner and the job must fail.
-  5. Set `CLAUDE_PLUGIN_ROOT=$PWD` and `CLAUDE_PLUGIN_DATA=$RUNNER_TEMP/plugin-data`.
-  6. Invoke `python hooks/dashboard-regen.py --autoregen true` after seeding a minimal usage-log fixture.
-  7. Assert the resulting dashboard HTML exists and contains expected jinja2-rendered markers.
-  8. **Vendor-isolation post-condition** (also `shell: bash`): the bare `.ci-venv` still has no jinja2 on its own `sys.path` (step 4 proved this). To prove the *vendored* copy is what actually rendered the dashboard, run:
-     ```bash
-     PYTHONPATH=$PWD python -c "import jinja2; print(jinja2.__file__)"
-     PYTHONPATH=$PWD python -c "import jinja2, sys; assert 'vendor' in jinja2.__file__, jinja2.__file__"
-     ```
-     The first line prints the resolved path for the CI log; the second asserts the substring `vendor` appears in it — matching `${CLAUDE_PLUGIN_ROOT}/claude_prospector/vendor/jinja2/__init__.py`. Without the `PYTHONPATH=$PWD` prefix the import fails outright (the venv has no jinja2 and no `claude_prospector` either), which is exactly the precondition step 4 established.
-- Existing `lint` and `test` jobs keep `uv pip install --system -e ".[dev]"` for their respective purposes.
-- Matrix: `[ubuntu-latest, windows-latest]`, Python 3.10.
+- `.github/workflows/ci.yml` — add a `plugin-invocation` job. The job-level `defaults.run.shell: bash` declaration applies bash to every step (covering both `ubuntu-latest` and `windows-latest`'s Git Bash), which eliminates the PowerShell-default footgun on Windows for the `!`-negation in step 4 and for the `=` env assignments. `CLAUDE_PLUGIN_ROOT` and `CLAUDE_PLUGIN_DATA` are hoisted to a job-level `env:` block so they propagate to every step without `$GITHUB_ENV` plumbing. `${{ github.workspace }}` is used in place of `$PWD` for self-documentation.
 
-**Verification:** the new job is the verification. Failure on either OS blocks merge. The precondition in step 4 is what distinguishes "the hook worked" from "the hook worked because of vendor isolation specifically."
+Resolved snippet:
+
+```yaml
+plugin-invocation:
+  name: plugin-invocation (${{ matrix.os }})
+  runs-on: ${{ matrix.os }}
+  strategy:
+    fail-fast: false
+    matrix:
+      os: [ubuntu-latest, windows-latest]
+  defaults:
+    run:
+      shell: bash
+  env:
+    CLAUDE_PLUGIN_ROOT: ${{ github.workspace }}
+    CLAUDE_PLUGIN_DATA: ${{ runner.temp }}/plugin-data
+  steps:
+    - uses: actions/checkout@v4
+
+    - uses: actions/setup-python@v5
+      with:
+        python-version: "3.10"
+
+    - name: Create empty CI venv (no dev install)
+      run: python -m venv .ci-venv
+
+    - name: Vendor-isolation precondition — jinja2 must NOT be importable from bare venv
+      run: |
+        source .ci-venv/Scripts/activate 2>/dev/null || source .ci-venv/bin/activate
+        ! python -c "import jinja2" 2>/dev/null
+
+    - name: Seed minimal usage-log fixture
+      run: |
+        mkdir -p "${CLAUDE_PLUGIN_DATA}"
+        # (fixture contents per the test_dashboard_regen_hook.py harness conventions)
+
+    - name: Invoke the hook end-to-end
+      run: |
+        source .ci-venv/Scripts/activate 2>/dev/null || source .ci-venv/bin/activate
+        python hooks/dashboard-regen.py --autoregen true
+
+    - name: Assert the dashboard rendered
+      run: |
+        test -f "${CLAUDE_PLUGIN_DATA}/dashboard.html"
+        grep -q "<!-- jinja2-rendered -->" "${CLAUDE_PLUGIN_DATA}/dashboard.html"
+
+    - name: Vendor-isolation post-condition — vendored jinja2 is what imports
+      run: |
+        source .ci-venv/Scripts/activate 2>/dev/null || source .ci-venv/bin/activate
+        PYTHONPATH="${{ github.workspace }}" python -c "import jinja2; print(jinja2.__file__)"
+        PYTHONPATH="${{ github.workspace }}" python -c "import jinja2; assert 'vendor' in jinja2.__file__, jinja2.__file__"
+```
+
+Notes on the snippet:
+
+- **`shell: bash` at the job level** (via `defaults.run.shell`) applies to every `run:` step, so steps 4–8 inherit it without per-step redeclaration. This resolves the BLOCKING-1 narrow-scope issue.
+- **`env:` at the job level** declares `CLAUDE_PLUGIN_ROOT` and `CLAUDE_PLUGIN_DATA` once. GHA propagates them to every step's process environment automatically; no `$GITHUB_ENV` plumbing or per-step exports are needed. This resolves BLOCKING-2.
+- **`${{ github.workspace }}`** replaces every `$PWD`. The contextual expression is unambiguous about which directory it names (the checkout root), regardless of any earlier step that may have changed cwd. This resolves BLOCKING-3.
+- The `source .ci-venv/Scripts/activate 2>/dev/null || source .ci-venv/bin/activate` idiom handles both layouts (Windows `Scripts/`, POSIX `bin/`) in one line and avoids per-OS branching.
+- The post-condition's grep assertion (`<!-- jinja2-rendered -->`) requires the dashboard template to carry a stable comment marker; if it does not today, add one as a one-line template tweak rather than parsing the HTML structurally.
+
+- Existing `lint` and `test` jobs keep `uv pip install --system -e ".[dev]"` for their respective purposes.
+
+**Verification:** the new job is the verification. Failure on either OS blocks merge. The precondition step is what distinguishes "the hook worked" from "the hook worked because of vendor isolation specifically."
 
 ### AC4: Version-pin failure machinery becomes structurally unreachable — **delete, do not keep as defense-in-depth**
 
@@ -203,13 +282,21 @@ The version-mismatch path in `dashboard-regen.py:L495-L531` exists because the P
 - `hooks/dashboard-regen.py:L495-L531` — the version-pin check block in the main function.
 - `tests/test_dashboard_regen_hook.py:L223-L248` — the entire `TestVersionMismatch` class.
 
+**Note on a pre-existing bug being deleted:** `dashboard-regen.py:L499` currently reads `manifest_path = Path(plugin_root_env) / "plugin.json"`, which is wrong — the manifest lives at `.claude-plugin/plugin.json`, not at the plugin-root top level. This bug predates the spec. AC4's deletion removes the buggy line entirely; the implementer should **not** carry the bug forward into the new `__init__.py` manifest fallback. The fallback as specified in AC1 uses the correct path:
+
+```python
+_manifest = Path(__file__).resolve().parent.parent / ".claude-plugin" / "plugin.json"
+```
+
+(`__file__` is `claude_prospector/__init__.py` → `.parent.parent` is the plugin root → then `.claude-plugin/plugin.json`.) Cross-check this when implementing.
+
 **Files (keep):**
 - `hooks/dashboard-regen.py:L322-L341` — `_python_not_found_page`. Reachable.
 - `hooks/dashboard-regen.py:L373-L396` — `_regen_failed_page`. Reachable.
 - `claude_prospector/__init__.py:L5-L10` — `__version__` resolution, **with manifest fallback** (see below).
 - `tests/test_version_flag.py:L46-L67` — `--version` CLI tests. **Regex update required:** the current `_VERSION_RE` has a quantifier typo (`[\d]` instead of `[\d]+` on the patch segment) and does not match the new `0.0.0+unknown` sentinel returned by the manifest fallback's outer `except`. Replace with:
   ```python
-  _VERSION_RE = re.compile(r"[\d]+\.[\d]+\.[\d]+|0\.0\.0\+local|0\.0\.0\+unknown")
+  _VERSION_RE = re.compile(r"\d+\.\d+\.\d+|0\.0\.0\+local|0\.0\.0\+unknown")
   ```
   This is exactly the path the new CI job exercises (no `.dist-info` in `.ci-venv`), so the regex bug would surface there first if left unfixed.
 
