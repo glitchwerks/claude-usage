@@ -13,6 +13,7 @@ touches:
   - tests/test_version_flag.py
   - tests/test_vendored_import.py
   - tests/test_readme_no_pip_install.py
+  - claude_prospector/templates/dashboard.html.j2
 ---
 
 # #67 — One-step plugin update (design pass, 2026-05-17)
@@ -306,7 +307,7 @@ Notes on the snippet:
 - **`env:` at the job level** declares `CLAUDE_PLUGIN_ROOT` and `CLAUDE_PLUGIN_DATA` once. GHA propagates them to every step's process environment automatically; no `$GITHUB_ENV` plumbing or per-step exports are needed. This resolves BLOCKING-2.
 - **`${{ github.workspace }}`** replaces every `$PWD`. The contextual expression is unambiguous about which directory it names (the checkout root), regardless of any earlier step that may have changed cwd. This resolves BLOCKING-3.
 - The `source .ci-venv/Scripts/activate 2>/dev/null || source .ci-venv/bin/activate` idiom handles both layouts (Windows `Scripts/`, POSIX `bin/`) in one line and avoids per-OS branching.
-- The post-condition's grep assertion (`<!-- jinja2-rendered -->`) requires the dashboard template to carry a stable comment marker; if it does not today, add one as a one-line template tweak rather than parsing the HTML structurally.
+- The post-condition's grep assertion (`<!-- jinja2-rendered -->`) requires the dashboard template to carry a stable comment marker. **Named deliverable:** add a single line `<!-- jinja2-rendered -->` to `claude_prospector/templates/dashboard.html.j2` (or whichever Jinja2 template `renderer.py` invokes) in the same PR as the AC3 CI job. This is added to `touches:` for visibility.
 
 - Existing `lint` and `test` jobs keep `uv pip install --system -e ".[dev]"` for their respective purposes.
 
