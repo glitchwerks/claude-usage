@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-05-17
+
+### Changed
+
+- **Breaking — user-config mechanism:** the `autoregen` setting is now declared in `plugin.json` under the `userConfig` block and toggled through the plugin manager (`/plugin reconfigure claude-prospector` or the install-time prompt), per [Anthropic's documented convention](https://code.claude.com/docs/en/plugins-reference#user-configuration). The `Stop` hook receives the value via `--autoregen "${user_config.autoregen}"` and parses truthiness in Python (`true` / `1` / `yes` case-insensitive). (#99, #100)
+- **Breaking — CLI surface:** `python -m claude_prospector config` is now read-only (`--show`). The mutation flags `--enable-autoregen` and `--disable-autoregen` are removed — their job belongs to the plugin manager now.
+- **Behavioral break for existing users:** if you had `autoregen: true` in the legacy `${CLAUDE_PLUGIN_DATA}/config.json`, autoregen will stop firing after upgrading until you re-toggle it through the plugin manager. The legacy file is preserved (not deleted) so you can consult your previous state.
+
+### Added
+
+- One-time `[migration]` notice written to `hook.log` when the legacy `config.json` is detected, advising users to re-toggle through the plugin manager. A sentinel file (`config.json.migrated-notice`) suppresses duplicate notices. (#100)
+
+[0.6.0]: https://github.com/glitchwerks/claude-prospector/releases/tag/v0.6.0
+
 ## [0.5.0] - 2026-05-17
 
 ### Changed
