@@ -1,6 +1,6 @@
 {
   "name": "claude-prospector",
-  "version": "0.6.0",
+  "version": "0.7.0rc1",
   "description": "Claude Code token usage analyzer with optimization recommendations. Surfaces what's eating your budget across the 5h / 7d / Sonnet-7d billing windows, with per-model and nested per-agent attribution and skill adoption tracking. Ships both an interactive dashboard and a conversational analysis skill.",
   "author": {
     "name": "Christopher Beaulieu",
