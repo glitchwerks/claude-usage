@@ -11,7 +11,10 @@ touches:
   - skills/setup-prospector/SKILL.md
   - tests/integration/setup_pipeline.py
   - tests/integration/test_setup_skill.py
+  - tests/unit/test_check_prospector_setup.py
+  - tests/unit/test_dashboard_regen_guard.py
   - tests/unit/test_setup_state.py
+  - tests/unit/test_skill_tracker_guard.py
   - tests/test_skill_pipeline_sync.py
   - .github/workflows/ci.yml
   - README.md
@@ -102,6 +105,7 @@ noted. D8–D12 are prospector-specific.
 | D10 | **Keep `requires-python = ">=3.10"`.** Do not bump to 3.11 for parity with wayfinder.                                                                                                                 | Prospector's `pyproject.toml:9` declares 3.10. Bumping to 3.11 is a minor breaking change for any user still on 3.10. The Pattern W probe needs only a version check — adapting `discover_python` to assert `>=3.10` instead of `>=3.11` is a one-line change. The only argument for bumping is matrix simplicity, and prospector's CI already tests against 3.10 (`.github/workflows/ci.yml`); a Pattern W smoke matrix can also pin 3.10 and still validate cross-platform behaviour. **Rejected**: bump to 3.11 — gains no compatibility, costs at least one user.                                                                                                                                        |
 | D11 | **Setup-state flag lives at `${CLAUDE_PLUGIN_DATA}/setup-state.json`.** Always. `CLAUDE_PROSPECTOR_BASE_DIR` does **not** override flag location.                                                      | The prospector three-tier resolver (`hooks/skill-tracker.py:35-56`, `hooks/dashboard-regen.py:74-95`) was designed for **runtime artifacts** (tracking JSONL, dashboard HTML, hook.log) that pre-date Pattern W. Pattern W's flag is **install-state**, not runtime state — its location must be predictable for the SessionStart hook before the venv is materialised. Pinning to `${CLAUDE_PLUGIN_DATA}` matches wayfinder, matches Anthropic's documented `${CLAUDE_PLUGIN_DATA}` mechanism (per `claude-code-plugin-authoring` skill § 4), and keeps the helper's path-resolution single-tier. **Rejected**: route flag through the three-tier base_dir() — premature generality, breaks the wayfinder symmetry. |
 | D12 | **Version target: `v0.7.0`.** Minor bump, not breaking userspace beyond the one-time `/setup-prospector` invocation.                                                                                  | Pattern W adds a new install requirement (run `/setup-prospector` once after upgrade) but does not change any existing CLI flag, hook payload shape, dashboard output, or skill behaviour. The userspace-visible change is the SessionStart banner on first v0.7.0 session. Minor-version semantics (SemVer "added functionality in a backward-compatible manner") fit. Pre-release rehearsal: `v0.7.0rc1` to TestPyPI for end-to-end CI validation before publishing to PyPI proper. **Rejected**: major v1.0.0 — premature; reserve for if/when the v0.6.0 → v0.7.0 migration story turns out worse than expected.                                                                                          |
+| D13 | **Setup pipeline uses `python -m pip install`, not `uv pip install`.**                                                                                                                               | End-user portability: `uv` is not assumed to be installed on user machines. The venv created by `python -m venv` already provides `pip` via `ensurepip`; using it in the setup pipeline means the end-user path requires nothing beyond a Python ≥ 3.10 interpreter. CI smoke jobs may use either `pip` or `uv` since CI already provides both. **Rejected**: `uv` as the install verb for the setup pipeline — would constrain end-user machine prerequisites without meaningful benefit. |
 
 ---
 
@@ -125,7 +129,7 @@ noted. D8–D12 are prospector-specific.
 │    │     └── VALID   (flag + path + version all match)                   │
 │    │                                                                     │
 │    ├── If VALID: spawn <venv-python> -c 'import claude_prospector'       │
-│    │     Failure → delete flag (becomes MISSING) → emit BROKEN banner    │
+│    │     Failure → delete flag (state becomes MISSING) → emit MISSING banner │
 │    │                                                                     │
 │    └── If NOT VALID: emit additionalContext banner                       │
 │         "claude-prospector requires setup. Run /setup-prospector."       │
@@ -193,13 +197,13 @@ noted. D8–D12 are prospector-specific.
 
 | File                                       | Change                                                                                                                                              | Approx LOC | Notes                                                                                                                                                                                                                                                                                                                                                                  |
 | ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `hooks/lib/setup_state.py`                 | **New.** Pure-functions helper. Mirrors wayfinder's `hooks/lib/setup-state.js` in Python.                                                           | ~150       | Surface: `read_setup_state(current_version) -> SetupStateResult`, `get_venv_python(venv_path) -> Path`, `get_current_version() -> str`, `get_plugin_data_dir() -> Path` (honors `$CLAUDE_PLUGIN_DATA` for tests), `get_flag_path() -> Path` (always `<plugin_data>/setup-state.json`). `SetupStateResult` is a `NamedTuple` or dataclass with `status` enum and `flag?`. |
+| `hooks/lib/setup_state.py`                 | **New.** Pure-functions helper. Mirrors wayfinder's `hooks/lib/setup-state.js` in Python. Each hook imports it via a `sys.path.insert` idiom (3 lines per hook, repeated identically): `import sys; from pathlib import Path; sys.path.insert(0, str(Path(__file__).parent / 'lib')); import setup_state  # noqa: E402`. The `noqa: E402` suppresses ruff's non-top-of-file-import warning; this mirrors wayfinder's `require('./lib/setup-state.js')` but adapts to Python's import model. | ~150       | Surface: `read_setup_state(current_version) -> SetupStateResult`, `get_venv_python(venv_path) -> Path`, `get_current_version() -> str`, `get_plugin_data_dir() -> Path` (honors `$CLAUDE_PLUGIN_DATA` for tests), `get_flag_path() -> Path` (always `<plugin_data>/setup-state.json`). `SetupStateResult` is a `NamedTuple` or dataclass with `status` enum and `flag?`. The `sys.path.insert` block adds ~3 LOC to each of the three hooks (`check-prospector-setup.py`, `skill-tracker.py`, `dashboard-regen.py`) and is not folded into the per-hook LOC estimates elsewhere in this table — it is a fixed overhead of the Python import model. |
 | `hooks/check-prospector-setup.py`          | **New.** SessionStart hook. Reads flag, runs import probe once per session, emits banner via `additionalContext`.                                   | ~120       | Banner text per § 5 table. On probe failure, deletes flag (downgrade to MISSING) before emitting banner. Wraps everything in try/except so SessionStart never crashes.                                                                                                                                                                                                 |
 | `hooks/skill-tracker.py`                   | **Modified.** Add `setup_state.read()` guard at top of `main()`. If not VALID, exit 0 silent. If VALID, the rest of `main()` proceeds as today.     | +20 -0     | The inline `_get_allowlist()` ImportError fallback (`hooks/skill-tracker.py:107-119`) is **retained** for defense — even when VALID, importing `claude_prospector.skill_tracking` from the current `sys.executable` (which is the harness Python, not the venv Python) may still fail; the filesystem fallback is correct behaviour and not removed by Pattern W.        |
-| `hooks/dashboard-regen.py`                 | **Modified.** Add `setup_state.read()` guard. Replace `[sys.executable, ...]` with `[str(get_venv_python(flag.venv_path)), ...]`. Drop `cwd=` arg.  | +30 -10    | Removes the brittle `Path(sys.executable).parent.parent.parent` CWD inference (`hooks/dashboard-regen.py:513`, `:559`). New contract: cwd defaults to the hook process's cwd (harness sets this); subprocess only needs the absolute `--output` path which the hook already supplies (`:553`). The `--autoregen` arg, version-mismatch gate, and migration-notice logic are all preserved untouched. |
+| `hooks/dashboard-regen.py`                 | **Modified.** Add `setup_state.read()` guard. **Both** subprocess callsites replace `sys.executable` with `get_venv_python(flag.venv_path)` and drop the `cwd=` arg: `:506-514` (version-mismatch gate — `subprocess.run([sys.executable, "-m", "claude_prospector", "--version"], ...)`) and `:543-560` (dashboard regen — `subprocess.run([sys.executable, "-m", "claude_prospector", "dashboard", ...])`). | +30 -12    | Removes the brittle `Path(sys.executable).parent.parent.parent` CWD inference from both callsites. New contract: `--data-dir` defaults to absolute `Path.home() / ".claude"` (verifiable in `claude_prospector/cli/dashboard.py:79`); `--output` is required-absolute in the spec'd invocation; no other argument resolves relative to cwd — so dropping `cwd=` is safe today. Implementers MUST re-verify this if any new dashboard CLI arg is added later. The `--autoregen` arg, version-mismatch gate logic, and migration-notice logic are all preserved untouched. |
 | `hooks/hooks.json`                         | **Modified.** Add `SessionStart` entry. Existing `PreToolUse` and `Stop` entries unchanged.                                                         | +12 -0     | New entry shape: `"SessionStart": [{ "hooks": [{ "type": "command", "command": "python \"${CLAUDE_PLUGIN_ROOT}/hooks/check-prospector-setup.py\"" }] }]`. Note that `python` here means the harness-provided Python — same as the other hooks today. Only the **logic inside** the hooks gates work behind Pattern W; the `hooks.json` command interpreter does not change. |
 | `skills/setup-prospector/SKILL.md`         | **New.** Mirrors `skills/setup-wayfinder/SKILL.md`.                                                                                                 | ~150       | Frontmatter with NL triggers (D5). Body: 8-step checklist matching § 3 architecture flow. Explicit env-var name `CLAUDE_PROSPECTOR_BOOTSTRAP_PYTHON`. Probe asserts Python ≥ 3.10.                                                                                                                                                                                       |
-| `tests/integration/setup_pipeline.py`      | **New.** Executable mirror of skill body's 8 steps. CI calls `run_full_pipeline(version, prior_interpreter=None)`.                                  | ~320       | Test seams: `$CLAUDE_PLUGIN_DATA`, `$CLAUDE_PROSPECTOR_BOOTSTRAP_PYTHON`, `$CLAUDE_PROSPECTOR_PIP_SPEC` (install from local checkout instead of PyPI — required for pre-publish CI; matches wayfinder's `CLAUDE_WAYFINDER_PIP_SPEC` pattern).                                                                                                                              |
+| `tests/integration/setup_pipeline.py`      | **New.** Executable mirror of skill body's 8 steps. CI calls `run_full_pipeline(version, prior_interpreter=None)`.                                  | ~320       | Test seams: `$CLAUDE_PLUGIN_DATA`, `$CLAUDE_PROSPECTOR_BOOTSTRAP_PYTHON`, `$CLAUDE_PROSPECTOR_PIP_SPEC` (install from local checkout instead of PyPI — required for pre-publish CI; matches wayfinder's `CLAUDE_WAYFINDER_PIP_SPEC` pattern). Includes a `<venv-python> -m ensurepip --upgrade` step before `pip install` as defensive plumbing for Windows runners where `ensurepip` may be disabled (see § 9.5). Per D13, the install verb is `pip`.                                                                                                                              |
 | `tests/integration/test_setup_skill.py`    | **New.** Pytest harness around `setup_pipeline.py`. Asserts venv exists, import succeeds, flag JSON shape valid.                                    | ~120       | Runs in CI smoke matrix.                                                                                                                                                                                                                                                                                                                                                |
 | `tests/unit/test_setup_state.py`           | **New.** Unit tests for `hooks/lib/setup_state.py`. ~12 cases mirroring WAYFINDER-SPEC § 7.                                                         | ~250       | Fixture states from WAYFINDER-SPEC § 7 helper-unit-tests table.                                                                                                                                                                                                                                                                                                          |
 | `tests/test_skill_pipeline_sync.py`        | **New.** Diff skill body's numbered steps against `setup_pipeline.py` headings to catch drift.                                                      | ~80        | Same purpose as wayfinder's sync test.                                                                                                                                                                                                                                                                                                                                  |
@@ -214,7 +218,7 @@ noted. D8–D12 are prospector-specific.
 - ~150 LOC new helper (`setup_state.py`)
 - ~120 LOC new SessionStart hook
 - ~20 LOC added to `skill-tracker.py` (guard only, no removals — the defensive `_get_allowlist` fallback stays)
-- ~30 LOC added / ~10 LOC removed in `dashboard-regen.py` (guard + venv-python wiring; removes the `.parent.parent.parent` CWD inference)
+- ~30 LOC added / ~12 LOC removed in `dashboard-regen.py` (guard + venv-python wiring; removes the `.parent.parent.parent` CWD inference from both subprocess callsites: version gate `:506-514` and regen `:543-560`)
 - The defensive inline `_base_dir()` mirrors in both Python hooks
   (`hooks/skill-tracker.py:35-56`, `hooks/dashboard-regen.py:74-95`) **stay
   unchanged** — they govern runtime artifact paths, not install state.
@@ -294,7 +298,7 @@ User runs /setup-prospector → wipe old venv, recreate against v0.7.1, flag rew
 
 ```
 SessionStart: flag valid, path exists, but `import claude_prospector` fails.
-check-prospector-setup.py deletes flag, emits BROKEN banner.
+check-prospector-setup.py deletes flag → state is now MISSING → emits MISSING banner.
 User re-runs /setup-prospector.
 ```
 
@@ -332,7 +336,7 @@ User retries when network/PyPI returns.
 
 ## § 7. Error modes
 
-Adapted from WAYFINDER-SPEC § 6, with one prospector-specific addition (F9).
+Adapted from WAYFINDER-SPEC § 6, with two prospector-specific additions (F9, F10).
 
 | ID  | Failure                                        | Where                          | Recovery                                                                                                                                                                                              |
 | --- | ---------------------------------------------- | ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -345,6 +349,7 @@ Adapted from WAYFINDER-SPEC § 6, with one prospector-specific addition (F9).
 | F7  | Hook can't parse flag JSON                     | Any hook calling helper        | `read_setup_state()` catches parse error, returns `MISSING`; banner fires next session.                                                                                                               |
 | F8  | Banner emission fails                          | `check-prospector-setup.py`    | Hook exits 0 (never blocks session); degrades to silent-no-op.                                                                                                                                        |
 | F9  | Legacy `~/.claude/.venv` import shadowing      | `check-prospector-setup.py` import probe | If a user has prospector installed in `~/.claude/.venv` AND the new venv's import probe spawns the **wrong** Python (e.g. user's PATH points there), the probe might "pass" against the legacy install rather than the new venv. **Mitigation**: the probe always uses `get_venv_python(flag.venv_path)` (an absolute path), never `python` from PATH. This is structural, not configurable. See § 11 for migration guidance to users running both. |
+| F10 | Venv path exists at SessionStart but package becomes unavailable mid-session | `dashboard-regen.py` and `skill-tracker.py` during a live session | The SessionStart probe passed, but the venv was corrupted or the package uninstalled during the session. Next `dashboard-regen.py` fire: `venv_python -m claude_prospector dashboard ...` exits non-zero; the existing `_regen_failed_page()` mechanism writes a failure HTML page — recoverable, user sees a failure notice rather than a crash. `skill-tracker.py` is unaffected: its `_get_allowlist()` ImportError fallback (`hooks/skill-tracker.py:107-119`) covers package-missing under harness Python, and the effect here is identical (package missing from the venv rather than from the harness). **No new code required**; these are the intended recovery surfaces for mid-session degradation. The next SessionStart will detect BROKEN state and emit a banner. |
 
 ### Hook invariants
 
@@ -379,9 +384,12 @@ Adapted from WAYFINDER-SPEC § 6, with one prospector-specific addition (F9).
    Python, not the venv Python — the import may still fail. The
    filesystem fallback is correct behaviour, not a wart to remove.
 7. **`Path(sys.executable).parent.parent.parent` is eliminated from
-   `dashboard-regen.py`.** The Pattern W spawn uses
-   `get_venv_python(flag.venv_path)` (an absolute path); cwd is
-   omitted.
+   `dashboard-regen.py` — in both subprocess callsites.** This covers
+   both the version-mismatch gate (`:506-514`) and the dashboard regen
+   call (`:543-560`). Both callsites use `get_venv_python(flag.venv_path)`
+   (an absolute path) and omit the `cwd=` arg. No hook ever spawns Python
+   without a VALID flag — this invariant binds equally to the version
+   probe and the regen subprocess.
 
 ---
 
@@ -407,6 +415,17 @@ Mirrors WAYFINDER-SPEC § 7. Three surfaces.
 | `get_plugin_data_dir()` honors `$CLAUDE_PLUGIN_DATA` env var             | passes            |
 | `get_venv_python()` returns `Scripts/python.exe` on Windows              | passes            |
 | `get_venv_python()` returns `bin/python` on POSIX                        | passes            |
+
+**Test-seam note — `$CLAUDE_PLUGIN_DATA` dual effect.** Setting
+`$CLAUDE_PLUGIN_DATA` in a test isolates **both** the flag path AND all
+runtime artifacts via the existing three-tier `base_dir()` resolver in
+`claude_prospector/paths.py:base_dir()`. Test authors should set the env
+var to a fresh temp dir and expect every state file — flag
+(`setup-state.json`), dashboard HTML, `hook.log`, skill-tracking JSONL —
+to land under that temp dir. This is the intended behaviour and simplifies
+test cleanup. If a test needs to isolate only the flag (unusual), it must
+additionally set `CLAUDE_PROSPECTOR_BASE_DIR` to redirect runtime artifacts
+back to their normal location.
 
 ### 9.2 Hook integration tests
 
@@ -462,6 +481,17 @@ increase. The pragmatic call is to land Pattern W with the same matrix
 shape (Linux + Windows) and add macOS as a separate follow-up if/when
 prospector users on macOS report Pattern W issues.
 
+**`ensurepip` defensive plumbing (Windows runners).** On Windows
+runners, the `python -m venv <dir>` step in `setup_pipeline.py` may
+produce a venv whose `Scripts/pip.exe` is absent or non-functional if
+`ensurepip` was disabled in the runner's Python build (rare but possible
+on minimal Python images). As defensive plumbing, `setup_pipeline.py`
+runs `<venv-python> -m ensurepip --upgrade` explicitly before the
+`pip install` step. Wayfinder's CI did not report this issue in v0.4.0
+but the cost is one additional subprocess and the cost of a CI failure
+here — a silent broken venv — is high. Per D13, the install verb is
+`pip`; this step ensures `pip` is available before it is called.
+
 ---
 
 ## § 10. Acceptance criteria — mapping to #107
@@ -478,8 +508,9 @@ session memory `project_pattern_w_prospector` and the user's brief):
    - **Files**: `hooks/lib/setup_state.py` (new, ~150 LOC); `tests/unit/test_setup_state.py` (new, ~250 LOC, 12 cases).
 4. **SessionStart hook banner.**
    - **Files**: `hooks/check-prospector-setup.py` (new, ~120 LOC); `hooks/hooks.json` (modified — add `SessionStart` entry).
+   - **Tests**: `tests/unit/test_check_prospector_setup.py` (new) — MISSING / STALE / VALID / BROKEN banner assertions; import-probe-fails → flag-deletion behaviour. `tests/unit/test_skill_tracker_guard.py` (new) — asserts `skill-tracker.py` exits 0 silent on non-VALID state. `tests/unit/test_dashboard_regen_guard.py` (new) — asserts `dashboard-regen.py` exits 0 silent on non-VALID state and spawns `<venv-python>` (absolute path) when VALID; covers both subprocess callsites.
 5. **Rewire existing hooks to use venv-python.**
-   - **Files**: `hooks/skill-tracker.py` (+20 — add VALID guard); `hooks/dashboard-regen.py` (+30 -10 — add VALID guard, replace `sys.executable` with `get_venv_python(flag.venv_path)`, drop `.parent.parent.parent` cwd inference).
+   - **Files**: `hooks/skill-tracker.py` (+20 — add VALID guard); `hooks/dashboard-regen.py` (+30 -12 — add VALID guard, replace `sys.executable` with `get_venv_python(flag.venv_path)` in both callsites, drop `.parent.parent.parent` cwd inference).
 6. **CI smoke test + README update.**
    - **Files**: `tests/integration/setup_pipeline.py` (new, ~320 LOC); `tests/integration/test_setup_skill.py` (new, ~120 LOC); `tests/test_skill_pipeline_sync.py` (new, ~80 LOC); `.github/workflows/ci.yml` (modified — `skill-smoke-{ubuntu,windows}` jobs); `README.md` (modified — first-run setup section).
 
@@ -546,6 +577,17 @@ operation.
 The `${user_config.autoregen}` setting is preserved across the upgrade.
 The legacy `config.json` migration mechanism added in v0.6.0 continues
 to function unchanged.
+
+**Harness Python requirement.** Pattern W does **not** remove the
+requirement for a working harness Python. The hook scripts
+(`check-prospector-setup.py`, `skill-tracker.py`, `dashboard-regen.py`)
+still run under the harness-provided `python` (per `hooks/hooks.json`).
+They do not require `claude-prospector` to be installed in the harness
+Python, but they do require a working harness Python. Users who remove
+their harness-environment Python entirely will break the plugin's
+SessionStart, PreToolUse, and Stop hooks. The venv created by
+`/setup-prospector` is for **subprocess spawning by the hooks**, not for
+the hook scripts themselves.
 ```
 
 ### 11.4 README first-run-setup section (draft)
@@ -578,6 +620,12 @@ You'll need to re-run `/setup-prospector` only when:
   unreachable or corrupt").
 - You move to a new machine (per-machine setup; flag is not portable
   across machines).
+
+**Note:** Pattern W does not remove the harness Python requirement. The
+plugin's hook scripts still run under the harness-provided `python` and
+require a working harness-environment Python interpreter. The venv
+created by `/setup-prospector` is used by the hooks for subprocess
+spawning only — not to run the hook scripts themselves.
 ```
 
 ---
@@ -625,32 +673,26 @@ The following are explicitly **not** in this spec:
 
 ---
 
-## § 14. Open questions for `project-reviewer`
+## § 14. Open questions (post-reviewer status)
 
-These are deliberately surfaced for the reviewer pass, not unresolved
-in the design itself — each has a proposed answer that the reviewer
-may either ratify or push back on:
+These were surfaced for the `project-reviewer` pass. All three have
+been ratified.
 
-1. **Should `tests/integration/setup_pipeline.py` use `uv` instead of
-   `pip` for the install step?** `uv` is the user's preferred package
-   tool per CLAUDE.md `# Python`. Counter-argument: the setup skill
-   runs on end-user machines where `uv` may not be installed. Proposed
-   answer: use `pip` inside the venv (already provisioned by
-   `python -m venv`), `uv` only for dev convenience in tests. CI smoke
-   matches the end-user path → `pip` in the pipeline, `uv` allowed in
-   the test fixtures only.
+1. ~~**Should `tests/integration/setup_pipeline.py` use `uv` instead of
+   `pip` for the install step?**~~ **Ratified — promoted to D13.**
+   Decision: use `pip` inside the venv for the end-user path; `uv`
+   allowed in test fixtures only. See D13 in § 2 for the full rationale.
 2. **Should the `SessionStart` banner suppress itself on the very
    first install** (no flag yet) to avoid a confusing "requires setup"
    message before the user has had a chance to learn the plugin
-   exists? Proposed answer: no — the banner IS the discovery
-   mechanism. Mirrors wayfinder.
+   exists? **Ratified — proposed answer accepted, no further action.**
+   The banner is the discovery mechanism. Mirrors wayfinder.
 3. **Should the import probe also assert
-   `claude_prospector.__version__ == flag.version`?** Today, the probe
-   only checks importability. A version-mismatch could occur if the
-   venv install raced with a manual pip-install (extremely unlikely
-   but possible). Proposed answer: no — that case downgrades to STALE
-   via the version field next session, which is the right behaviour.
-   Probe stays minimal.
+   `claude_prospector.__version__ == flag.version`?** **Ratified —
+   proposed answer accepted, no further action.** Probe stays minimal
+   (importability only). Version-mismatch downgrades to STALE via the
+   version field at the next SessionStart, which is the correct
+   recovery path.
 
 ---
 
