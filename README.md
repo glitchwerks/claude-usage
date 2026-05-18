@@ -4,35 +4,22 @@ Token usage analyzer for Claude Code that surfaces where your budget is going ac
 
 ## Why
 
-Claude Code tracks three billing buckets (5h rolling, 7d rolling, Sonnet-only 7d) but provides no per-agent or per-skill visibility. This tool reads Claude Code's local JSONL session files and generates a dashboard that breaks down where your tokens are going.
+Claude Code tracks three billing buckets (5h rolling, 7d rolling, Sonnet-only 7d) but provides no per-agent or per-skill visibility. This tool reads Claude Code's local JSONL session files and generates a dashboard that breaks down where your tokens are going — by model, agent, skill, and project.
 
-## Install as a Claude Code plugin
+## Install
 
-The easiest way to use `claude-prospector` is as a Claude Code plugin — no manual
-cloning or path configuration required.
+### 1. Add the marketplace and install the plugin
 
 ```bash
 claude plugin marketplace add glitchwerks/plugins
 claude plugin install claude-prospector@glitchwerks
 ```
 
-### Prerequisite: Python package
+### 2. First-run setup
 
-The plugin invokes `python -m claude_prospector` under the hood, so the Python
-package must be importable in the environment Claude Code uses. Install with either:
+After installing (or after a plugin update), open a new Claude Code session. You will see a banner:
 
-- **From a local clone**: `uv pip install -e .`
-- **Directly from GitHub**: `uv pip install "git+https://github.com/glitchwerks/claude-prospector.git"`
-
-> A future enhancement (#67) tracks eliminating this two-step install so `claude plugin update` is sufficient on its own.
-
-## First-run setup
-
-After installing claude-prospector for the first time (or after a plugin
-update), open a new Claude Code session. You'll see a banner:
-
-> claude-prospector requires setup. Run /setup-prospector to materialise
-> the Python venv.
+> claude-prospector requires setup. Run /setup-prospector to materialise the Python venv. After setup completes, open a new session to activate the dashboard, skill-tracking, and usage-analysis features.
 
 Run `/setup-prospector` once. The skill will:
 
@@ -41,161 +28,149 @@ Run `/setup-prospector` once. The skill will:
 3. Install `claude-prospector` from PyPI into that venv.
 4. Verify the install and record a setup-state flag.
 
-After setup completes, open a new session — the banner will be gone and
-the dashboard, skill-tracking, and usage-analysis features will work
-normally.
+After setup completes, open a new session — the banner will be gone and all features will work normally.
 
-You'll need to re-run `/setup-prospector` only when:
+You will need to re-run `/setup-prospector` only when:
 
-- The plugin updates to a new version (banner: "venv is for vX but
-  plugin is vY").
-- The venv is corrupted or deleted (banner: "venv at <path> is
-  unreachable or corrupt").
-- You move to a new machine (per-machine setup; flag is not portable
-  across machines).
+- The plugin updates to a new version (banner: "venv is for vX but plugin is vY").
+- The venv is corrupted or deleted (banner: "venv at `<path>` is unreachable or corrupt").
+- You move to a new machine (setup is per-machine; the flag is not portable).
 
-**Note:** The plugin's hook scripts still run under the harness-provided
-`python` and require a working harness-environment Python interpreter.
-The venv created by `/setup-prospector` is used by the hooks for
-subprocess spawning only.
+## What you can do
 
-### Migration from v0.6.0
+### `usage-analysis` skill
 
-After upgrading to v0.7.0, open a new Claude Code session. A banner will
-prompt you to run `/setup-prospector`. This is a one-time action per
-machine.
+Conversational analysis with recommendations. Triggered by natural-language phrases such as:
 
-If you previously installed `claude-prospector` into `~/.claude/.venv`,
-you can leave that install in place — Pattern W hooks always use the
-plugin-owned venv via an absolute path. To reclaim disk you may
-`uv pip uninstall claude-prospector` from `~/.claude/.venv` after setup;
-this is optional.
+- "am I close to my Sonnet limit?"
+- "where are my tokens going?"
+- "which agent uses the most tokens?"
+- "give me a usage analysis"
 
-## What the plugin provides
+The skill reads your session data and responds inline — no browser required.
 
-v0.4.0 ships the full plugin surface:
+### `usage-dashboard` skill
 
-- **Interactive dashboard** — HTML report with three-bucket budget gauges (5h / 7d / Sonnet-7d), per-model donut and bar charts, per-agent token attribution with nested sub-agent tracing, skill-invocation counts, and per-project breakdowns.
-- **`usage-analysis` skill** — conversational analysis with recommendations. Answers questions like "am I close to my Sonnet limit?", "where are my tokens going?", and "which agent uses the most?". Triggered by natural-language phrases.
-- **`usage-dashboard` skill** — bare regeneration surface. Triggered by phrases like "regenerate the dashboard" or "rebuild my usage dashboard"; writes the HTML file and reports the path, without interpreting the data.
-- **`skill-tracker` hook** (PreToolUse, always-on) — logs `Skill` tool-use events to the state directory for the `by_skill` and skill-passed-vs-invoked analyses.
-- **`dashboard-regen` hook** (Stop, opt-in) — auto-regenerates the dashboard after every session when the `autoregen` user-config is enabled via the plugin manager (`/plugin reconfigure claude-prospector` or at install time).
+Bare dashboard regeneration. Triggered by phrases like "regenerate the dashboard" or "rebuild my usage dashboard". Writes the HTML file and reports the path, without interpreting the data.
 
-### Configuration (autoregen)
+The generated HTML dashboard includes:
 
-The `dashboard-regen` Stop hook is opt-in. Toggle it through the Claude Code
-plugin manager — no manual file edits required:
+- **Budget gauges** — estimated usage against each billing bucket (5h / 7d / Sonnet-only 7d)
+- **Model breakdown** — donut chart and daily stacked bar chart (Opus / Sonnet / Haiku)
+- **Agent breakdown** — token usage per agent with model attribution and nested sub-agent tracing
+- **Skill usage** — invocation counts per skill
+- **Project breakdown** — tokens per project
+- **Session drill-down** — click a day to see individual sessions with agents, tokens, and model split
+
+### `setup-prospector` skill
+
+First-run and post-update setup. Triggered by `/setup-prospector` or phrases like "set up claude-prospector", "fix prospector", or "prospector isn't working". See [Install](#install) for the full walkthrough.
+
+### SessionStart hook (`check-prospector-setup.py`)
+
+Fires once at the beginning of every session. Checks setup state and emits a banner when setup is missing, stale, or broken. Silent when everything is valid. This hook never blocks the session.
+
+### `skill-tracker` hook (`skill-tracker.py`, PreToolUse)
+
+Logs `Skill` and `Agent` tool-use events to the state directory for the `by_skill` and skill-passed-vs-invoked analyses. Gated on VALID setup state — if you skip `/setup-prospector`, skill-tracking is silently inactive until setup is complete.
+
+### `dashboard-regen` hook (Stop, opt-in)
+
+Auto-regenerates the dashboard after every session when `autoregen` is enabled. Off by default; toggle via the plugin manager (see [Configuration](#configuration)).
+
+## Configuration
+
+The `dashboard-regen` Stop hook is opt-in. Toggle it through the Claude Code plugin manager — no manual file edits required:
 
 ```
 /plugin reconfigure claude-prospector
 ```
 
-You will be prompted to enable or disable `autoregen`. You can also set it at
-install time when the plugin manager shows the initial configuration prompt.
+You will be prompted to enable or disable `autoregen`. You can also set it at install time when the plugin manager shows the initial configuration prompt.
 
-To inspect the current plugin state, use the read-only CLI:
+To inspect the current plugin configuration, use the read-only CLI:
 
 ```bash
 python -m claude_prospector config --show
 ```
 
-This prints the legacy `config.json` contents if present. The authoritative
-value is the `autoregen` setting shown in the plugin manager.
+When a config file exists, this prints its contents as pretty-printed JSON to stdout.
+When no config file exists, it prints `(no config file yet)` and a redirect note to stderr, and `{}` to stdout. Exit code is 0 in both cases.
 
-> **Upgrading from v0.4.x?** If you previously ran
-> `python -m claude_prospector config --enable-autoregen`, your old
-> `config.json` is still readable via `--show`. The hook will log a one-time
-> advisory message to `hook.log` the first time it runs with the new
-> user-config path. Re-toggle via `/plugin reconfigure claude-prospector` to
-> move to the managed setting. The old `config.json` file is not deleted.
+The authoritative `autoregen` value is whatever is set in the plugin manager — not the legacy `config.json`.
 
-### State storage
+## Environment variables
 
-When running as a plugin, state (dashboard HTML, hook log, skill-tracking JSONL files) is stored under the `${CLAUDE_PLUGIN_DATA}` directory — the Anthropic-documented persistent state location that survives plugin updates.
+| Variable | Controls | Notes |
+|---|---|---|
+| `CLAUDE_PLUGIN_DATA` | Venv placement and default state/dashboard storage | Set by the Claude Code plugin host; do not override in normal use |
+| `CLAUDE_PROSPECTOR_BASE_DIR` | State and dashboard storage for hooks and CLI | Overrides `CLAUDE_PLUGIN_DATA` for hooks/CLI only; does not affect the venv location |
+| `CLAUDE_PROSPECTOR_PIP_SPEC` | The pip spec used by `/setup-prospector` | Overrides the default `claude-prospector==<version>` — used in CI and dev to install from TestPyPI or a local checkout |
 
-Users upgrading from v0.4.0 get a **one-time automatic migration**: on the first session after upgrade, any existing files from `~/.claude/claude-prospector/` are moved into `${CLAUDE_PLUGIN_DATA}` and the legacy directory is removed.
+## Troubleshooting
 
-For testing or non-plugin use, set `CLAUDE_PROSPECTOR_BASE_DIR` to override the location entirely (takes priority over `${CLAUDE_PLUGIN_DATA}`).
+The SessionStart hook emits one of four banner states. Use the banner text to decide what to do:
 
-## Development / Standalone CLI
+**MISSING** — No setup-state flag found, or the previous venv failed the per-session import probe.
 
-For working on the package directly, or running it without the Claude Code plugin.
+> claude-prospector requires setup. Run /setup-prospector to materialise the Python venv. After setup completes, open a new session to activate the dashboard, skill-tracking, and usage-analysis features.
 
-### Install for development
+Action: run `/setup-prospector`, then open a new session.
 
-```bash
-git clone https://github.com/cbeaulieu-gt/claude-prospector.git
-cd claude-prospector
-uv pip install -e ".[dev]"   # installs runtime + ruff + pytest
-```
+**STALE** — The flag records a different plugin version than the one currently installed.
 
-Requires Python 3.10+.
+> claude-prospector venv is for v`<flag_version>` but plugin is v`<current_version>`. Run /setup-prospector to refresh the venv.
 
-### Run the CLI directly
+Action: run `/setup-prospector` to rebuild the venv for the new version.
 
-```bash
-# Default: last 7 days, opens in browser
-python -m claude_prospector
+**BROKEN** — The flag exists and the version matches, but the venv path is unreachable or corrupt.
 
-# Rolling window matching billing buckets
-python -m claude_prospector --window 5h
-python -m claude_prospector --window 7d
+> claude-prospector venv at `<venv_path>` is unreachable or corrupt. Run /setup-prospector to recreate it.
 
-# Custom date range
-python -m claude_prospector --from 2026-04-01 --to 2026-04-09
+Action: run `/setup-prospector` to recreate the venv.
 
-# Output to file instead of opening browser
-python -m claude_prospector --output report.html --no-open
+**VALID (probe failed)** — The flag looks valid but the per-session `import claude_prospector` probe failed. The hook downgrades state to MISSING and emits the MISSING banner.
 
-# Custom Claude data directory
-python -m claude_prospector --data-dir "D:\other\.claude"
+Action: same as MISSING — run `/setup-prospector`, then open a new session.
 
-# Set budget limits for gauge percentages
-python -m claude_prospector --limit-5h 600000 --limit-7d 4000000 --limit-sonnet-7d 2000000
-```
+**Silent session** — No banner emitted. Setup is valid and the import probe passed. All features are active.
 
-### Subcommands
+## Subcommands
 
-All functionality is accessed through named subcommands. Bare `claude-prospector` prints help and exits 0.
+All functionality is accessed through named subcommands. Bare `claude-prospector` (no subcommand) prints help and exits 0.
 
-#### `dashboard` — interactive HTML dashboard
+### `dashboard` — interactive HTML dashboard
 
 ```bash
 # Default: last 7 days, opens in browser
-claude-prospector dashboard
+python -m claude_prospector dashboard
 
 # Rolling window matching Claude billing buckets
-claude-prospector dashboard --window 5h
-claude-prospector dashboard --window 7d
+python -m claude_prospector dashboard --window 5h
+python -m claude_prospector dashboard --window 7d
 
 # Custom date range
-claude-prospector dashboard --from 2026-04-01 --to 2026-04-09
+python -m claude_prospector dashboard --from 2026-04-01 --to 2026-04-09
 
 # Output to file instead of opening browser
-claude-prospector dashboard --output report.html --no-open
+python -m claude_prospector dashboard --output report.html --no-open
 
 # Custom Claude data directory
-claude-prospector dashboard --data-dir "D:\other\.claude"
+python -m claude_prospector dashboard --data-dir "D:\other\.claude"
 
 # Set budget limits for gauge percentages
-claude-prospector dashboard --limit-5h 600000 --limit-7d 4000000 \
-    --limit-sonnet-7d 2000000
+python -m claude_prospector dashboard --limit-5h 600000 --limit-7d 4000000 --limit-sonnet-7d 2000000
 
-# Emit JSON (for scripting / CI)
-claude-prospector dashboard --format json
+# Emit JSON for scripting or CI
+python -m claude_prospector dashboard --format json
 ```
 
-All flags are unchanged from the pre-refactor form — only their location
-moved (now under the `dashboard` subparser).
+### `session-summary` — deterministic session recap
 
-#### `session-summary` — deterministic session recap (new in v0.2.0)
-
-Reads a single Claude Code transcript JSONL file and emits a structured
-JSON summary suitable for consumption by the `/whats-next` skill or any
-other tool that needs to know what a session did.
+Reads a single Claude Code transcript JSONL file and emits a structured JSON summary suitable for consumption by the `/whats-next` skill or any other tool that needs to know what a session did.
 
 ```bash
-claude-prospector session-summary --path ~/.claude/projects/<hash>/<session>.jsonl
+python -m claude_prospector session-summary --path ~/.claude/projects/<hash>/<session>.jsonl
 ```
 
 **Flags:**
@@ -228,33 +203,88 @@ claude-prospector session-summary --path ~/.claude/projects/<hash>/<session>.jso
 |---|---|---|
 | `0` | Success — JSON written to stdout | *(silent)* |
 | `1` | IO failure reading `--path` (file missing, permission denied, etc.) | `session-summary: cannot read transcript at '<path>': <OSError class>: <message>` |
-| `2` | File readable but contains no external user turns (empty session, zero-byte file, whitespace-only file) | `session-summary: transcript '<path>' contains no user turns` |
+| `2` | File readable but contains no external user turns | `session-summary: transcript '<path>' contains no user turns` |
 | `3` | File has content but none of it parses as JSONL | `session-summary: transcript '<path>' is not valid JSONL` |
 
 On any non-zero exit, stdout is empty and stderr contains exactly one line.
 
-#### Migration note
+### `config` — inspect configuration
 
-The old flag-only form **no longer works** after v0.2.0:
+```bash
+python -m claude_prospector config --show
+```
+
+Prints current `config.json` contents, or `{}` when no config file exists. See [Configuration](#configuration) for full details.
+
+## Migration
+
+### v0.6.0 → v0.7.0 (Pattern W)
+
+After upgrading to v0.7.0, open a new Claude Code session. A banner will prompt you to run `/setup-prospector`. This is a one-time action per machine.
+
+If you previously installed `claude-prospector` into `~/.claude/.venv`, you can leave that install in place — Pattern W hooks always use the plugin-owned venv via an absolute path. To reclaim disk space you may `uv pip uninstall claude-prospector` from `~/.claude/.venv` after setup; this is optional.
+
+### Pre-v0.2.0 CLI callers
+
+The bare flag form **no longer works** after v0.2.0:
 
 ```bash
 # REMOVED — will print help and exit 0, not run the dashboard
 claude-prospector --format json
 
-# CORRECT — migrate all callers to:
+# CORRECT
 claude-prospector dashboard --format json
 ```
 
-Any script, skill, or CI step that invokes `claude-prospector` with bare flags
-(no subcommand) must be updated to use `claude-prospector dashboard [flags]`.
+Any script, skill, or CI step that invokes `claude-prospector` with bare flags (no subcommand) must be updated to use `claude-prospector dashboard [flags]`.
+
+### Upgrading from v0.4.x (autoregen config)
+
+If you previously ran `python -m claude_prospector config --enable-autoregen`, your old `config.json` is still readable via `--show`. Re-toggle via `/plugin reconfigure claude-prospector` to move to the managed setting. The old `config.json` file is not deleted.
+
+## Internals
+
+### Nested agent attribution
+
+When Claude Code sessions dispatch sub-agents that themselves dispatch further sub-agents, `claude-prospector` traces the full depth and attributes tokens to the complete root-to-leaf chain rather than just the immediate leaf.
+
+- **Data model.** Each `MessageRecord` carries an `agent_path: tuple[str, ...]` field (e.g. `("general-purpose", "project-planner", "Explore")`) and a parallel `agent_type: str` stored field. Both are populated at parse time; the parser enforces the invariant `agent_type == agent_path[-1]` when `agent_path` is non-empty. The two fields are kept in sync by the parser, not by the dataclass itself.
+
+- **`by_agent` keys.** The aggregator's `by_agent` dict is keyed by the full path joined with U+2192 (`→`), for example `"general-purpose→project-planner→Explore"`. Depth-1 sessions produce single-segment keys identical to the pre-change shape.
+
+- **Per-session `agents` list.** Each session's `agents` list contains only the deepest-leaf path per chain. Sibling chains that share a leaf name but differ in their ancestor are both kept. This rule preserves the dashboard JS's per-agent token apportionment, which divides session totals by `s.agents.length`.
+
+- **Depth limit.** Path tuples may contain up to 10 segments total (`_MAX_AGENT_PATH_LENGTH = 10`). Beyond that, the parser emits a single `UserWarning` and stops descending; deeper messages are bucketed under the last walked ancestor.
+
+- **Sanitization.** A literal `→` appearing inside an agent name is replaced with `﹖` (U+FE56) at parse time and a `UserWarning` fires. The sanitized name is used throughout.
+
+- **Deferred.** Dashboard tree visualization (sunburst, indented tree, expand/collapse) is out of scope for the current release. The existing flat agent list in the dashboard JS receives path-keyed entries but no hierarchical rendering yet.
+
+### State storage
+
+When running as a plugin, state (dashboard HTML, hook log, skill-tracking JSONL files) is stored under `${CLAUDE_PLUGIN_DATA}` — the Anthropic-documented persistent state location that survives plugin updates.
+
+Users upgrading from v0.4.0 get a one-time automatic migration: on the first session after upgrade, any existing files from `~/.claude/claude-prospector/` are moved into `${CLAUDE_PLUGIN_DATA}` and the legacy directory is removed.
+
+## Development
+
+### Install for development
+
+```bash
+git clone https://github.com/glitchwerks/claude-prospector.git
+cd claude-prospector
+uv pip install -e ".[dev]"   # installs runtime + ruff + pytest
+```
+
+Requires Python 3.10+.
 
 ### Testing
 
 ```bash
-pytest                # ~151 tests, typically finishes in under 5 seconds
+pytest   # 358 tests, typically finishes in under 5 seconds
 ```
 
-### Linting & formatting
+### Linting and formatting
 
 ```bash
 ruff check .          # lint
@@ -271,65 +301,10 @@ GitHub Actions runs on every PR and push to `main`:
 
 Both jobs must be green before a PR can merge.
 
-## Nested agent attribution
+### Future enhancements
 
-When Claude Code sessions dispatch sub-agents that themselves dispatch further
-sub-agents, `claude-prospector` traces the full depth and attributes tokens to the
-complete root-to-leaf chain rather than just the immediate leaf.
+Issue #67 tracks making `claude plugin update` handle the Python venv refresh automatically, so that `/setup-prospector` would not need to be run manually after updates. Until that lands, re-run `/setup-prospector` after each plugin update when prompted by the SessionStart banner.
 
-- **Data model.** Each `MessageRecord` carries an `agent_path: tuple[str, ...]`
-  field (e.g. `("general-purpose", "project-planner", "Explore")`) and a
-  parallel `agent_type: str` stored field. Both are populated together at parse
-  time; the parser enforces the invariant `agent_type == agent_path[-1]` (when
-  `agent_path` is non-empty). `agent_type` is not a computed property — it is a
-  plain dataclass field, so consumers that construct `MessageRecord` with an
-  explicit `agent_type=` argument continue to work without change. The two
-  fields are kept in sync by the parser, not by the dataclass itself.
+## License
 
-- **`by_agent` keys.** The aggregator's `by_agent` dict is keyed by the full
-  path joined with U+2192 (`→`), for example
-  `"general-purpose→project-planner→Explore"`. Depth-1 sessions produce
-  single-segment keys identical to the pre-change shape, so existing
-  integrations are unaffected.
-
-- **Per-session `agents` list.** Each session's `agents` list contains only
-  the deepest-leaf path per chain (e.g. a depth-3 chain
-  `general-purpose → project-planner → Explore` contributes one entry,
-  `"general-purpose→project-planner→Explore"`). Sibling chains that share a
-  leaf name but differ in their ancestor are both kept — neither is a prefix
-  of the other. This rule preserves the dashboard JS's per-agent token
-  apportionment, which divides session totals by `s.agents.length`.
-
-- **Depth limit.** Path tuples may contain up to **10 segments** total —
-  the root agent plus up to 9 levels of nested sub-agents
-  (`_MAX_AGENT_PATH_LENGTH = 10`). Beyond that, the parser emits a single
-  `UserWarning` and stops descending; deeper messages are bucketed under the
-  last walked ancestor. The warning fires at most once per session parse (not
-  once per overflowing message), as do the cycle and OSError warnings below.
-  On Windows, junction-based cycles are caught by this same cap rather than
-  by the POSIX visited-set short-circuit.
-
-- **Sanitization.** A literal `→` appearing inside an agent name is replaced
-  with `﹖` (U+FE56) at parse time and a `UserWarning` fires. The sanitized
-  name is used throughout (parse, aggregation, dashboard key) so attribution
-  data is preserved even when the invariant is violated.
-
-- **Deferred.** Dashboard tree visualization (sunburst, indented tree,
-  expand/collapse) is out of scope for this release. The existing flat agent
-  list in the dashboard JS receives path-keyed entries but no hierarchical
-  rendering yet.
-
-## Dashboard
-
-The generated HTML dashboard includes:
-
-- **Budget gauges** - estimated usage against each billing bucket (5h, 7d, Sonnet-only 7d)
-- **Model breakdown** - donut chart and daily stacked bar chart (Opus/Sonnet/Haiku)
-- **Agent breakdown** - token usage per agent with model attribution
-- **Skill usage** - invocation counts per skill
-- **Project breakdown** - tokens per project
-- **Session drill-down** - click a day to see individual sessions with agents, tokens, and model split
-
-## How It Works
-
-Reads JSONL session files from `~/.claude/projects/`. Each session file contains timestamped assistant messages with model name and token usage. Subagent metadata (`.meta.json`) maps child agent tokens to their agent type. Skill invocations are extracted from `Skill` tool-use entries.
+MIT — see [LICENSE](LICENSE).
