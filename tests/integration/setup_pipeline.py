@@ -23,6 +23,7 @@ import re
 import shlex
 import shutil
 import subprocess
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -87,7 +88,7 @@ def discover_python(prior_interpreter: str | None = None) -> str:
     probe = "import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)"
     for candidate in candidates:
         try:
-            args = candidate.split() + ["-c", probe]
+            args = shlex.split(candidate) + ["-c", probe]
             result = subprocess.run(
                 args, capture_output=True, check=False, timeout=10
             )
@@ -106,11 +107,23 @@ def wipe_venv(venv_dir: Path) -> None:
 
     Always-wipe per spec D4. Missing directory is silently ignored.
 
+    On Windows, recently-exited subprocesses may still hold locks on
+    .exe / .dll files inside the venv for a brief window. We retry once
+    after a short sleep before falling back to ignore_errors=True so a
+    transient lock does not abort the whole pipeline. A truly-stuck file
+    will surface during create_venv() when the leftover directory blocks
+    venv creation — that path produces an actionable error message.
+
     Args:
         venv_dir: Absolute path to the venv directory to remove.
     """
-    if venv_dir.exists():
+    if not venv_dir.exists():
+        return
+    try:
         shutil.rmtree(venv_dir)
+    except (OSError, PermissionError):
+        time.sleep(0.5)
+        shutil.rmtree(venv_dir, ignore_errors=True)
 
 
 def create_venv(python_cmd: str, venv_dir: Path) -> None:
@@ -128,7 +141,7 @@ def create_venv(python_cmd: str, venv_dir: Path) -> None:
         SetupError: If `python -m venv` exits nonzero. Stderr and stdout
             are included so callers can surface them verbatim.
     """
-    args = python_cmd.split() + ["-m", "venv", str(venv_dir)]
+    args = shlex.split(python_cmd) + ["-m", "venv", str(venv_dir)]
     try:
         result = subprocess.run(
             args, capture_output=True, text=True, check=False, timeout=60

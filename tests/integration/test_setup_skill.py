@@ -99,3 +99,55 @@ def test_discover_python_finds_real_interpreter(
     """discover_python() finds the CI runner's Python >= 3.10."""
     interpreter = setup_pipeline.discover_python()
     assert interpreter, "Should find at least one Python >= 3.10 on CI"
+
+
+def test_discover_python_handles_quoted_path(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """discover_python() handles bootstrap-python paths containing spaces.
+
+    The path doesn't need to be a real python — discover_python tries the
+    candidate, fails, and falls through to the next. We just verify the
+    candidate doesn't crash the loop with a FileNotFoundError or ValueError
+    on the shlex.split() call.
+    """
+    spaced_dir = tmp_path / "dir with spaces"
+    spaced_dir.mkdir()
+    fake_py = spaced_dir / "python.exe"
+    fake_py.touch()
+    monkeypatch.setenv(
+        "CLAUDE_PROSPECTOR_BOOTSTRAP_PYTHON", str(fake_py)
+    )
+    # discover_python() should not raise on the spaced candidate; should
+    # fall through to the real python3/python and succeed.
+    interpreter = setup_pipeline.discover_python()
+    assert interpreter, (
+        "Should fall through past the unusable spaced candidate"
+    )
+
+
+def test_wipe_venv_tolerates_locked_files(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """wipe_venv() retries once then falls back to ignore_errors on PermissionError."""
+    venv_dir = tmp_path / "venv"
+    venv_dir.mkdir()
+    (venv_dir / "marker").write_text("hello", encoding="utf-8")
+
+    import shutil
+
+    call_count = {"n": 0}
+    real_rmtree = shutil.rmtree
+
+    def flaky_rmtree(path, *args, **kwargs):
+        call_count["n"] += 1
+        if call_count["n"] == 1:
+            raise PermissionError("simulated Windows lock")
+        # Second call uses ignore_errors=True; let it actually delete.
+        return real_rmtree(path, ignore_errors=True)
+
+    monkeypatch.setattr(shutil, "rmtree", flaky_rmtree)
+    setup_pipeline.wipe_venv(venv_dir)
+    # No exception raised. Second rmtree call did the actual cleanup.
+    assert call_count["n"] == 2
+    assert not venv_dir.exists()
