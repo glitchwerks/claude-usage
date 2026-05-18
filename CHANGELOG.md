@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0rc1] - 2026-05-18
+
+### Added
+
+- TestPyPI rehearsal of the PyPI publish workflow shipped in #109. No functional changes — this release-candidate validates the OIDC trusted-publisher + tag-routing wiring end-to-end before the real `v0.7.0` ships Pattern W adoption (#107). (#111)
+
+[0.7.0rc1]: https://github.com/glitchwerks/claude-prospector/releases/tag/v0.7.0-rc1
+
 ## [0.6.0] - 2026-05-17
 
 ### Changed
