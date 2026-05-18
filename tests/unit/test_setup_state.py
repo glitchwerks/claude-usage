@@ -86,7 +86,14 @@ def test_flag_unparseable(plugin_data: Path) -> None:
 
 
 def test_flag_missing_version_field(plugin_data: Path) -> None:
-    _write_flag(plugin_data, {"venv_path": "/some/venv", "interpreter": "python3", "installed_at": "2026-01-01T00:00:00Z"})
+    _write_flag(
+        plugin_data,
+        {
+            "venv_path": "/some/venv",
+            "interpreter": "python3",
+            "installed_at": "2026-01-01T00:00:00Z",
+        },
+    )
     result = setup_state.read_setup_state("0.7.0")
     assert result.status == "MISSING"
 
@@ -110,12 +117,15 @@ def test_flag_empty_object(plugin_data: Path) -> None:
 
 def test_flag_valid(plugin_data: Path) -> None:
     venv_dir = _make_fake_venv(plugin_data)
-    _write_flag(plugin_data, {
-        "version": "0.7.0",
-        "venv_path": str(venv_dir),
-        "interpreter": "python3",
-        "installed_at": "2026-01-01T00:00:00Z",
-    })
+    _write_flag(
+        plugin_data,
+        {
+            "version": "0.7.0",
+            "venv_path": str(venv_dir),
+            "interpreter": "python3",
+            "installed_at": "2026-01-01T00:00:00Z",
+        },
+    )
     result = setup_state.read_setup_state("0.7.0")
     assert result.status == "VALID"
     assert result.flag is not None
@@ -129,12 +139,15 @@ def test_flag_valid(plugin_data: Path) -> None:
 
 def test_flag_stale_version(plugin_data: Path) -> None:
     venv_dir = _make_fake_venv(plugin_data)
-    _write_flag(plugin_data, {
-        "version": "0.6.0",
-        "venv_path": str(venv_dir),
-        "interpreter": "python3",
-        "installed_at": "2026-01-01T00:00:00Z",
-    })
+    _write_flag(
+        plugin_data,
+        {
+            "version": "0.6.0",
+            "venv_path": str(venv_dir),
+            "interpreter": "python3",
+            "installed_at": "2026-01-01T00:00:00Z",
+        },
+    )
     result = setup_state.read_setup_state("0.7.0")
     assert result.status == "STALE"
     assert result.flag is not None
@@ -146,12 +159,15 @@ def test_flag_stale_version(plugin_data: Path) -> None:
 
 
 def test_flag_broken_venv_path_missing(plugin_data: Path) -> None:
-    _write_flag(plugin_data, {
-        "version": "0.7.0",
-        "venv_path": str(plugin_data / "nonexistent_venv"),
-        "interpreter": "python3",
-        "installed_at": "2026-01-01T00:00:00Z",
-    })
+    _write_flag(
+        plugin_data,
+        {
+            "version": "0.7.0",
+            "venv_path": str(plugin_data / "nonexistent_venv"),
+            "interpreter": "python3",
+            "installed_at": "2026-01-01T00:00:00Z",
+        },
+    )
     result = setup_state.read_setup_state("0.7.0")
     assert result.status == "BROKEN"
 
@@ -165,12 +181,15 @@ def test_flag_broken_venv_python_missing(plugin_data: Path) -> None:
     venv_dir = plugin_data / "venv"
     venv_dir.mkdir()
     # Do NOT create the python binary — venv dir exists, python doesn't
-    _write_flag(plugin_data, {
-        "version": "0.7.0",
-        "venv_path": str(venv_dir),
-        "interpreter": "python3",
-        "installed_at": "2026-01-01T00:00:00Z",
-    })
+    _write_flag(
+        plugin_data,
+        {
+            "version": "0.7.0",
+            "venv_path": str(venv_dir),
+            "interpreter": "python3",
+            "installed_at": "2026-01-01T00:00:00Z",
+        },
+    )
     result = setup_state.read_setup_state("0.7.0")
     assert result.status == "BROKEN"
 
@@ -180,7 +199,9 @@ def test_flag_broken_venv_python_missing(plugin_data: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_get_current_version_from_pyproject(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_get_current_version_from_pyproject(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     pyproject = tmp_path / "pyproject.toml"
     pyproject.write_text(
         '[project]\nname = "claude-prospector"\nversion = "0.7.0"\n',
@@ -196,7 +217,9 @@ def test_get_current_version_from_pyproject(tmp_path: Path, monkeypatch: pytest.
 # ---------------------------------------------------------------------------
 
 
-def test_get_current_version_fallback_to_plugin_json(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_get_current_version_fallback_to_plugin_json(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     # No pyproject.toml at all
     claude_plugin = tmp_path / ".claude-plugin"
     claude_plugin.mkdir()

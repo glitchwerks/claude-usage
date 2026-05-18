@@ -94,16 +94,17 @@ def main() -> int:
         flag_version = (
             result.flag.get("version", "unknown") if result.flag else "unknown"
         )
-        _emit(_BANNER_STALE_TMPL.format(
-            flag_version=flag_version,
-            current_version=current_version,
-        ))
+        _emit(
+            _BANNER_STALE_TMPL.format(
+                flag_version=flag_version,
+                current_version=current_version,
+            )
+        )
         return 0
 
     if result.status == "BROKEN":
         venv_path = (
-            result.flag.get("venv_path", "<unknown>") if result.flag
-            else "<unknown>"
+            result.flag.get("venv_path", "<unknown>") if result.flag else "<unknown>"
         )
         _emit(_BANNER_BROKEN_TMPL.format(venv_path=venv_path))
         return 0

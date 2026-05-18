@@ -10,9 +10,7 @@ from pathlib import Path
 
 import pytest
 
-SKILL_BODY = (
-    Path(__file__).parent.parent / "skills" / "setup-prospector" / "SKILL.md"
-)
+SKILL_BODY = Path(__file__).parent.parent / "skills" / "setup-prospector" / "SKILL.md"
 PIPELINE = Path(__file__).parent / "integration" / "setup_pipeline.py"
 
 # Maps the human-readable step heading in the skill body to the function name
@@ -33,12 +31,19 @@ def test_skill_body_lists_expected_step_count() -> None:
     """Skill body must contain exactly 8 sequential step headings."""
     body = SKILL_BODY.read_text(encoding="utf-8")
     step_headings = re.findall(r"^##\s+Step\s+(\d+):", body, re.MULTILINE)
-    assert len(step_headings) == 8, (
-        f"Expected 8 steps in skill body, found {len(step_headings)}"
-    )
-    assert step_headings == ["1", "2", "3", "4", "5", "6", "7", "8"], (
-        "Steps should be numbered 1-8 consecutively"
-    )
+    assert (
+        len(step_headings) == 8
+    ), f"Expected 8 steps in skill body, found {len(step_headings)}"
+    assert step_headings == [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7",
+        "8",
+    ], "Steps should be numbered 1-8 consecutively"
 
 
 @pytest.mark.parametrize("step_heading,function_name", STEP_FUNCTION_MAP.items())
@@ -54,9 +59,9 @@ def test_skill_step_has_matching_function(
         f"{step_heading!r}"
     )
     pattern = rf"^def\s+{re.escape(function_name)}\s*\("
-    assert re.search(pattern, pipeline, re.MULTILINE), (
-        f"Function {function_name}() not found in setup_pipeline.py"
-    )
+    assert re.search(
+        pattern, pipeline, re.MULTILINE
+    ), f"Function {function_name}() not found in setup_pipeline.py"
 
 
 def test_pipeline_has_run_full_pipeline_entrypoint() -> None:

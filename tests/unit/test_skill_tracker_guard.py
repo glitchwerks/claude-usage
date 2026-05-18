@@ -30,9 +30,7 @@ import setup_state as _setup_state  # noqa: E402
 _CURRENT_VERSION = _setup_state.get_current_version()
 
 
-def _make_env(
-    tmp_path: Path, extra: dict[str, str] | None = None
-) -> dict[str, str]:
+def _make_env(tmp_path: Path, extra: dict[str, str] | None = None) -> dict[str, str]:
     """Build subprocess environment for hook invocation.
 
     Args:
@@ -46,14 +44,12 @@ def _make_env(
     env = os.environ.copy()
     env["CLAUDE_PLUGIN_DATA"] = str(tmp_path)
     env["CLAUDE_PLUGIN_ROOT"] = str(_WORKTREE)
-    env["CLAUDE_PROSPECTOR_SKILL_TRACKING_DIR"] = str(
-        tmp_path / "skill-tracking"
-    )
+    env["CLAUDE_PROSPECTOR_SKILL_TRACKING_DIR"] = str(tmp_path / "skill-tracking")
     env["CLAUDE_PROSPECTOR_HOOK_LOG"] = str(tmp_path / "hook.log")
     hooks_lib = str(_WORKTREE / "hooks" / "lib")
     existing_path = env.get("PYTHONPATH", "")
-    env["PYTHONPATH"] = (
-        hooks_lib + (os.pathsep + existing_path if existing_path else "")
+    env["PYTHONPATH"] = hooks_lib + (
+        os.pathsep + existing_path if existing_path else ""
     )
     if extra:
         env.update(extra)
@@ -67,9 +63,7 @@ def _write_flag(tmp_path: Path, data: dict) -> None:
         tmp_path: Directory to write the flag into.
         data: Flag content to serialize as JSON.
     """
-    (tmp_path / "setup-state.json").write_text(
-        json.dumps(data), encoding="utf-8"
-    )
+    (tmp_path / "setup-state.json").write_text(json.dumps(data), encoding="utf-8")
 
 
 def _make_fake_venv(tmp_path: Path) -> Path:
@@ -129,9 +123,9 @@ def test_non_valid_state_exits_silent(tmp_path: Path) -> None:
     tracking_dir = tmp_path / "skill-tracking"
     if tracking_dir.exists():
         jsonl_files = list(tracking_dir.glob("*.jsonl"))
-        assert not jsonl_files, (
-            "No tracking files should be written when state is non-VALID"
-        )
+        assert (
+            not jsonl_files
+        ), "No tracking files should be written when state is non-VALID"
 
 
 def test_valid_state_allows_tracking(tmp_path: Path) -> None:
@@ -144,12 +138,15 @@ def test_valid_state_allows_tracking(tmp_path: Path) -> None:
     against the allowlist content.
     """
     venv_dir = _make_fake_venv(tmp_path)
-    _write_flag(tmp_path, {
-        "version": _CURRENT_VERSION,
-        "venv_path": str(venv_dir),
-        "interpreter": "python3",
-        "installed_at": "2026-01-01T00:00:00Z",
-    })
+    _write_flag(
+        tmp_path,
+        {
+            "version": _CURRENT_VERSION,
+            "venv_path": str(venv_dir),
+            "interpreter": "python3",
+            "installed_at": "2026-01-01T00:00:00Z",
+        },
+    )
     # CLAUDE_PLUGIN_ROOT is set in _make_env to _WORKTREE so
     # get_current_version() reads pyproject.toml and returns the same version
     # as _CURRENT_VERSION (matching the flag version -> VALID).
@@ -161,12 +158,8 @@ def test_valid_state_allows_tracking(tmp_path: Path) -> None:
     result = _run_hook(tmp_path, payload)
     assert result.returncode == 0
     tracking_dir = tmp_path / "skill-tracking"
-    jsonl_files = (
-        list(tracking_dir.glob("*.jsonl")) if tracking_dir.exists() else []
-    )
-    assert jsonl_files, (
-        "Tracking file should be written when state is VALID"
-    )
+    jsonl_files = list(tracking_dir.glob("*.jsonl")) if tracking_dir.exists() else []
+    assert jsonl_files, "Tracking file should be written when state is VALID"
     events = [
         json.loads(line)
         for line in jsonl_files[0].read_text().splitlines()

@@ -152,9 +152,7 @@ def get_current_version() -> str:
     plugin_json_path = root / ".claude-plugin" / "plugin.json"
     if plugin_json_path.exists():
         try:
-            data = json.loads(
-                plugin_json_path.read_text(encoding="utf-8")
-            )
+            data = json.loads(plugin_json_path.read_text(encoding="utf-8"))
             if data.get("version"):
                 return str(data["version"]).strip()
         except (OSError, json.JSONDecodeError):
@@ -196,17 +194,14 @@ def read_setup_state(current_version: str) -> SetupStateResult:
     try:
         flag = json.loads(flag_path.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError) as exc:
-        sys.stderr.write(
-            f"[setup-state] flag file unparseable: {exc}\n"
-        )
+        sys.stderr.write(f"[setup-state] flag file unparseable: {exc}\n")
         return SetupStateResult(status="MISSING", flag=None)
 
     version = flag.get("version")
     if not isinstance(version, str) or not version.strip():
         if version is not None:
             sys.stderr.write(
-                "[setup-state] flag has malformed version field: "
-                f"{version!r}\n"
+                "[setup-state] flag has malformed version field: " f"{version!r}\n"
             )
         return SetupStateResult(status="MISSING", flag=None)
 
@@ -240,6 +235,4 @@ def delete_flag() -> None:
     try:
         flag_path.unlink(missing_ok=True)
     except OSError as exc:
-        sys.stderr.write(
-            f"[setup-state] failed to delete flag: {exc}\n"
-        )
+        sys.stderr.write(f"[setup-state] failed to delete flag: {exc}\n")

@@ -88,13 +88,15 @@ def discover_python(prior_interpreter: str | None = None) -> str:
     probe = "import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)"
     for candidate in candidates:
         try:
-            args = shlex.split(candidate) + ["-c", probe]
-            result = subprocess.run(
-                args, capture_output=True, check=False, timeout=10
-            )
+            # Use posix=False on Windows to preserve backslash path separators.
+            if platform.system() == "Windows":
+                args = shlex.split(candidate, posix=False) + ["-c", probe]
+            else:
+                args = shlex.split(candidate) + ["-c", probe]
+            result = subprocess.run(args, capture_output=True, check=False, timeout=10)
             if result.returncode == 0:
                 return candidate
-        except (FileNotFoundError, subprocess.TimeoutExpired):
+        except (FileNotFoundError, OSError, subprocess.TimeoutExpired):
             continue
     raise SetupError(
         f"No Python >= 3.10 found. Tried: {candidates}. "
@@ -148,9 +150,7 @@ def create_venv(python_cmd: str, venv_dir: Path) -> None:
         )
     except subprocess.TimeoutExpired as exc:
         shutil.rmtree(venv_dir, ignore_errors=True)
-        raise SetupError(
-            f"python -m venv timed out after {exc.timeout}s"
-        ) from exc
+        raise SetupError(f"python -m venv timed out after {exc.timeout}s") from exc
     if result.returncode != 0:
         raise SetupError(
             f"python -m venv failed (exit {result.returncode}):\n"
@@ -207,8 +207,13 @@ def pip_install(venv_dir: Path, version: str) -> None:
         "CLAUDE_PROSPECTOR_PIP_SPEC",
         f"claude-prospector=={version}",
     )
-    # shlex.split handles both plain specs and path/editable forms (-e /path)
-    args = [str(venv_python), "-m", "pip", "install", *shlex.split(pip_spec)]
+    # shlex.split handles both plain specs and path/editable forms (-e /path).
+    # Use posix=False on Windows so backslash path separators are preserved.
+    if platform.system() == "Windows":
+        spec_tokens = shlex.split(pip_spec, posix=False)
+    else:
+        spec_tokens = shlex.split(pip_spec)
+    args = [str(venv_python), "-m", "pip", "install", *spec_tokens]
     try:
         result = subprocess.run(
             args, capture_output=True, text=True, check=False, timeout=180
@@ -243,9 +248,7 @@ def verify_import(venv_dir: Path) -> None:
         )
     except subprocess.TimeoutExpired as exc:
         shutil.rmtree(venv_dir, ignore_errors=True)
-        raise SetupError(
-            f"import check timed out after {exc.timeout}s"
-        ) from exc
+        raise SetupError(f"import check timed out after {exc.timeout}s") from exc
     if result.returncode != 0:
         shutil.rmtree(venv_dir, ignore_errors=True)
         raise SetupError(

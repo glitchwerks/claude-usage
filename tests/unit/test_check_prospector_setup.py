@@ -34,6 +34,7 @@ _HOOK_PATH = _WORKTREE / "hooks" / "check-prospector-setup.py"
 # 0.7.0rc1 during the rehearsal window and would otherwise drift to STALE.
 sys.path.insert(0, str(_WORKTREE / "hooks" / "lib"))
 import setup_state as _setup_state  # noqa: E402
+
 _CURRENT_VERSION = _setup_state.get_current_version()
 
 
@@ -102,9 +103,7 @@ def _write_flag(tmp_path: Path, data: dict) -> None:
         tmp_path: Directory in which to write setup-state.json.
         data: Flag content dict to serialise as JSON.
     """
-    (tmp_path / "setup-state.json").write_text(
-        json.dumps(data), encoding="utf-8"
-    )
+    (tmp_path / "setup-state.json").write_text(json.dumps(data), encoding="utf-8")
 
 
 def _make_fake_venv_python(tmp_path: Path) -> Path:
@@ -154,12 +153,15 @@ def test_missing_flag_emits_setup_banner(tmp_path: Path) -> None:
 
 def test_stale_flag_emits_version_banner(tmp_path: Path) -> None:
     """Flag with old version -> banner mentions version mismatch."""
-    _write_flag(tmp_path, {
-        "version": "0.6.0",
-        "venv_path": str(tmp_path / "venv"),
-        "interpreter": "python3",
-        "installed_at": "2026-01-01T00:00:00Z",
-    })
+    _write_flag(
+        tmp_path,
+        {
+            "version": "0.6.0",
+            "venv_path": str(tmp_path / "venv"),
+            "interpreter": "python3",
+            "installed_at": "2026-01-01T00:00:00Z",
+        },
+    )
     output = _run_hook(tmp_path)
     context = output.get("additionalContext", "")
     assert "0.6.0" in context or "setup" in context.lower()
@@ -171,12 +173,15 @@ def test_broken_flag_emits_broken_banner(tmp_path: Path) -> None:
     venv_dir = tmp_path / "venv"
     venv_dir.mkdir()
     # Do NOT create python binary — venv dir exists, python doesn't
-    _write_flag(tmp_path, {
-        "version": _CURRENT_VERSION,
-        "venv_path": str(venv_dir),
-        "interpreter": "python3",
-        "installed_at": "2026-01-01T00:00:00Z",
-    })
+    _write_flag(
+        tmp_path,
+        {
+            "version": _CURRENT_VERSION,
+            "venv_path": str(venv_dir),
+            "interpreter": "python3",
+            "installed_at": "2026-01-01T00:00:00Z",
+        },
+    )
     output = _run_hook(tmp_path)
     context = output.get("additionalContext", "")
     assert context  # Some banner was emitted
@@ -209,6 +214,7 @@ def test_valid_flag_import_ok_no_banner(tmp_path: Path) -> None:
         # Windows may require elevated privileges for symlinks; fall back to
         # a hard copy so the path exists and is executable.
         import shutil
+
         shutil.copy2(real_python, venv_python)
 
     # Create a minimal claude_prospector stub so `import claude_prospector`
@@ -220,12 +226,15 @@ def test_valid_flag_import_ok_no_banner(tmp_path: Path) -> None:
         '"""Stub for test import probe."""\n', encoding="utf-8"
     )
 
-    _write_flag(tmp_path, {
-        "version": _CURRENT_VERSION,
-        "venv_path": str(tmp_path / "venv"),
-        "interpreter": "python3",
-        "installed_at": "2026-01-01T00:00:00Z",
-    })
+    _write_flag(
+        tmp_path,
+        {
+            "version": _CURRENT_VERSION,
+            "venv_path": str(tmp_path / "venv"),
+            "interpreter": "python3",
+            "installed_at": "2026-01-01T00:00:00Z",
+        },
+    )
     # Inject PYTHONPATH so the real venv python can import the stub.
     output = _run_hook(tmp_path, extra_env={"PYTHONPATH": str(stub_site)})
     context = output.get("additionalContext", "")
@@ -255,19 +264,22 @@ def test_valid_flag_import_fails_deletes_flag_and_emits_banner(
     if platform.system() != "Windows":
         venv_python.chmod(0o755)
 
-    _write_flag(tmp_path, {
-        "version": _CURRENT_VERSION,
-        "venv_path": str(tmp_path / "venv"),
-        "interpreter": "python3",
-        "installed_at": "2026-01-01T00:00:00Z",
-    })
+    _write_flag(
+        tmp_path,
+        {
+            "version": _CURRENT_VERSION,
+            "venv_path": str(tmp_path / "venv"),
+            "interpreter": "python3",
+            "installed_at": "2026-01-01T00:00:00Z",
+        },
+    )
 
     output = _run_hook(tmp_path)
 
     # Flag must be deleted (probe failure -> downgrade to MISSING)
-    assert not (tmp_path / "setup-state.json").exists(), (
-        "Flag should have been deleted after probe failure"
-    )
+    assert not (
+        tmp_path / "setup-state.json"
+    ).exists(), "Flag should have been deleted after probe failure"
     # A banner must be emitted
     context = output.get("additionalContext", "")
     assert context, "Expected a banner after probe failure deleted the flag"

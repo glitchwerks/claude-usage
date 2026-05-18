@@ -61,8 +61,8 @@ def _make_env(
     env["CLAUDE_PROSPECTOR_HOOK_LOG"] = str(tmp_path / "hook.log")
     hooks_lib = str(_WORKTREE / "hooks" / "lib")
     existing_path = env.get("PYTHONPATH", "")
-    env["PYTHONPATH"] = (
-        hooks_lib + (os.pathsep + existing_path if existing_path else "")
+    env["PYTHONPATH"] = hooks_lib + (
+        os.pathsep + existing_path if existing_path else ""
     )
     # Write a plugin.json so the version-check logic has a manifest version.
     plugin_root = _WORKTREE
@@ -79,9 +79,7 @@ def _write_flag(tmp_path: Path, data: dict) -> None:
         tmp_path: Directory to write the flag into.
         data: Flag content to serialize as JSON.
     """
-    (tmp_path / "setup-state.json").write_text(
-        json.dumps(data), encoding="utf-8"
-    )
+    (tmp_path / "setup-state.json").write_text(json.dumps(data), encoding="utf-8")
 
 
 def _make_fake_venv_python_success(tmp_path: Path) -> Path:
@@ -117,7 +115,7 @@ def _make_fake_venv_python_success(tmp_path: Path) -> Path:
         sentinel = os.environ.get("CLAUDE_PROSPECTOR_SENTINEL_FILE")
         if sentinel:
             with open(sentinel, "w") as f:
-                f.write(sys.executable)
+                f.write(sys.argv[0])
         args = sys.argv[1:]
         if "--version" in args or (
             "-m" in args
@@ -140,9 +138,7 @@ def _make_fake_venv_python_success(tmp_path: Path) -> Path:
     return venv_dir
 
 
-def _run_hook(
-    tmp_path: Path, env: dict
-) -> subprocess.CompletedProcess:
+def _run_hook(tmp_path: Path, env: dict) -> subprocess.CompletedProcess:
     """Invoke dashboard-regen.py as a subprocess with --autoregen true.
 
     Args:
@@ -167,9 +163,9 @@ def test_non_valid_state_exits_silent(tmp_path: Path) -> None:
     env = _make_env(tmp_path)
     result = _run_hook(tmp_path, env)
     assert result.returncode == 0
-    assert not (tmp_path / "dashboard.html").exists(), (
-        "Dashboard should not be created when state is non-VALID"
-    )
+    assert not (
+        tmp_path / "dashboard.html"
+    ).exists(), "Dashboard should not be created when state is non-VALID"
 
 
 @pytest.mark.skipif(
@@ -194,19 +190,23 @@ def test_valid_state_uses_venv_python_for_regen(tmp_path: Path) -> None:
         expected_venv_python = venv_dir / "bin" / "python"
 
     sentinel_file = tmp_path / "invoked_interpreter.txt"
-    _write_flag(tmp_path, {
-        "version": _MANIFEST_VERSION,
-        "venv_path": str(venv_dir),
-        "interpreter": "python3",
-        "installed_at": "2026-01-01T00:00:00Z",
-    })
-    env = _make_env(tmp_path, extra={
-        "CLAUDE_PROSPECTOR_SENTINEL_FILE": str(sentinel_file),
-    })
-    result = _run_hook(tmp_path, env)
-    assert result.returncode == 0, (
-        f"Hook exited non-zero. stderr: {result.stderr}"
+    _write_flag(
+        tmp_path,
+        {
+            "version": _MANIFEST_VERSION,
+            "venv_path": str(venv_dir),
+            "interpreter": "python3",
+            "installed_at": "2026-01-01T00:00:00Z",
+        },
     )
+    env = _make_env(
+        tmp_path,
+        extra={
+            "CLAUDE_PROSPECTOR_SENTINEL_FILE": str(sentinel_file),
+        },
+    )
+    result = _run_hook(tmp_path, env)
+    assert result.returncode == 0, f"Hook exited non-zero. stderr: {result.stderr}"
 
     # The sentinel must exist — meaning the fake venv python was invoked.
     assert sentinel_file.exists(), (
