@@ -92,6 +92,18 @@ def test_flag_missing_version_field(plugin_data: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Case 3b: Flag is an empty JSON object — both required fields absent
+# ---------------------------------------------------------------------------
+
+
+def test_flag_empty_object(plugin_data: Path) -> None:
+    _write_flag(plugin_data, {})
+    result = setup_state.read_setup_state("0.7.0")
+    assert result.status == "MISSING"
+    assert result.flag is None
+
+
+# ---------------------------------------------------------------------------
 # Case 4: Flag valid, version matches, venv path exists, venv-python exists
 # ---------------------------------------------------------------------------
 

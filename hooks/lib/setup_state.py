@@ -141,9 +141,9 @@ def get_current_version() -> str:
             content = pyproject_path.read_text(encoding="utf-8")
             # Match version = "X.Y.Z" inside the [project] table
             match = re.search(
-                r"^\[project\].*?^version\s*=\s*\"([^\"]+)\"",
+                r"^\[project\][^\[]*?^version\s*=\s*\"([^\"]+)\"",
                 content,
-                re.MULTILINE | re.DOTALL,
+                re.MULTILINE,
             )
             if match:
                 return match.group(1).strip()
