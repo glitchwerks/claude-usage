@@ -4,7 +4,9 @@ Token usage analyzer for Claude Code that surfaces where your budget is going ac
 
 ## Why
 
-Claude Code tracks three billing buckets (5h rolling, 7d rolling, Sonnet-only 7d) but provides no per-agent or per-skill visibility. This tool reads Claude Code's local JSONL session files and generates a dashboard that breaks down where your tokens are going — by model, agent, skill, and project.
+Claude Code's built-in `/usage` shows current-session token totals and — for Max/Pro subscribers — plan-usage bars on the same screen. It doesn't surface multi-day history, per-agent attribution with sub-agent nesting, per-skill invocation counts, or per-project breakdowns, and there's no way to ask "where are my Sonnet-7d tokens going this week?" from inside the session.
+
+`claude-prospector` reads Claude Code's local JSONL session files across all your sessions and generates a dashboard that breaks down where your tokens are going — by model, agent (with sub-agent nesting), skill, and project — across all three billing windows (5h rolling, 7d rolling, Sonnet-only 7d).
 
 ## Install
 
