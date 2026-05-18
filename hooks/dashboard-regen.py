@@ -62,6 +62,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 # ---------------------------------------------------------------------------
+# Pattern W: import setup_state helper from hooks/lib/
+# ---------------------------------------------------------------------------
+# sys and Path are already imported above.
+sys.path.insert(0, str(Path(__file__).parent / "lib"))
+import setup_state  # noqa: E402
+
+# ---------------------------------------------------------------------------
 # Path resolution (mirrors claude_prospector.paths without importing it)
 # ---------------------------------------------------------------------------
 # The hook script is invoked as a standalone Python file by the harness.
@@ -464,6 +471,18 @@ def main() -> int:
     Returns:
         Always 0 — hook failures must not propagate to the session runner.
     """
+    # Pattern W guard: only proceed if setup state is VALID.
+    try:
+        _current_ver = setup_state.get_current_version()
+        _state = setup_state.read_setup_state(_current_ver)
+        if _state.status != "VALID":
+            return 0  # Banner already shown by SessionStart hook
+        # Pre-compute venv python here so both subprocess callsites below
+        # can use _venv_python directly without re-accessing _state.flag.
+        _venv_python = str(setup_state.get_venv_python(Path(_state.flag["venv_path"])))
+    except Exception:
+        return 0  # Defensive: never crash the session
+
     try:
         # Step 1: consume stdin so the process closes cleanly.
         _stdin = sys.stdin.read()
@@ -506,11 +525,10 @@ def main() -> int:
         # Get package version via subprocess.
         try:
             ver_result = subprocess.run(
-                [sys.executable, "-m", "claude_prospector", "--version"],
+                [_venv_python, "-m", "claude_prospector", "--version"],
                 capture_output=True,
                 text=True,
                 timeout=30,
-                cwd=str(Path(sys.executable).parent.parent.parent),
             )
             if ver_result.returncode != 0:
                 _write_page(dashboard, _python_not_found_page())
@@ -543,7 +561,7 @@ def main() -> int:
         # Step 4: run the regen.
         regen_result = subprocess.run(
             [
-                sys.executable,
+                _venv_python,
                 "-m",
                 "claude_prospector",
                 "dashboard",
@@ -556,7 +574,6 @@ def main() -> int:
             capture_output=True,
             text=True,
             timeout=120,
-            cwd=str(Path(sys.executable).parent.parent.parent),
         )
 
         if regen_result.returncode != 0:

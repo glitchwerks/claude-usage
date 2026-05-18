@@ -5,6 +5,51 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-05-18
+
+### Added
+
+- `/setup-prospector` skill: materialises a plugin-owned Python venv at
+  `${CLAUDE_PLUGIN_DATA}/venv/` and writes a setup-state flag. Required
+  once after install or after a plugin update.
+- `SessionStart` hook (`hooks/check-prospector-setup.py`): surfaces a
+  banner when setup is required and runs a per-session import probe to
+  detect venv corruption.
+- `hooks/lib/setup_state.py`: shared deterministic helper for flag I/O,
+  version comparison, and venv-python path resolution.
+- CI: `skill-smoke-{ubuntu,windows}` jobs validate the full setup
+  pipeline on every PR against real Python 3.10 and real pip.
+
+### Changed
+
+- `hooks/dashboard-regen.py` no longer guesses the venv root via
+  `Path(sys.executable).parent.parent.parent`. Both the version-check
+  subprocess (`:506-514`) and the dashboard regen subprocess (`:543-560`)
+  now use the absolute path recorded in the setup-state flag.
+- `hooks/skill-tracker.py` now short-circuits silently when the
+  setup-state flag is not VALID, deferring to the SessionStart banner
+  for user guidance.
+- `claude-prospector` is now published to PyPI. The setup skill installs
+  from PyPI by default; `CLAUDE_PROSPECTOR_PIP_SPEC` allows installing
+  from a local checkout for development.
+
+### Migration from v0.6.0
+
+After upgrading to v0.7.0, open a new Claude Code session. A
+SessionStart banner will prompt you to run `/setup-prospector`. This is
+a one-time action per machine per major version.
+
+If you previously installed `claude-prospector` into `~/.claude/.venv`
+(the user-managed venv approach), you can leave that install in place —
+Pattern W's hooks always spawn the plugin-owned venv via an absolute
+path and will not pick up the legacy install. To reclaim disk, you may
+`uv pip uninstall claude-prospector` from `~/.claude/.venv` after
+Pattern W is working; this is optional and unrelated to plugin operation.
+
+The `${user_config.autoregen}` setting is preserved across the upgrade.
+The legacy `config.json` migration mechanism added in v0.6.0 continues
+to function unchanged.
+
 ## [0.7.0rc1] - 2026-05-18
 
 ### Added

@@ -4,9 +4,129 @@ from __future__ import annotations
 
 import json
 import os
+import platform
+import shutil
+import sys
+import sysconfig
 from pathlib import Path
 
 import pytest
+
+# ---------------------------------------------------------------------------
+# Pattern W: shared fixture for hook tests that require a VALID setup state
+# ---------------------------------------------------------------------------
+
+# Resolve current version dynamically so VALID-flag fixtures aren't classified
+# STALE when pyproject.toml contains a pre-release version (e.g. 0.7.0rc1).
+_TESTS_DIR = Path(__file__).parent
+_WORKTREE = _TESTS_DIR.parent
+sys.path.insert(0, str(_WORKTREE / "hooks" / "lib"))
+import setup_state as _setup_state  # noqa: E402
+
+_CURRENT_VERSION = _setup_state.get_current_version()
+
+
+@pytest.fixture()
+def valid_setup_state(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Redirect CLAUDE_PLUGIN_DATA to tmp_path and write a VALID setup-state flag.
+
+    Builds a minimal fake venv layout under ``tmp_path / "venv"`` by copying
+    ``sys.executable`` into the platform-correct subdirectory
+    (``Scripts/python.exe`` on Windows, ``bin/python`` on POSIX).  This
+    guarantees that ``setup_state.get_venv_python(venv_dir)`` resolves to a
+    path that exists *and* is a real interpreter binary — regardless of
+    whether the tests run inside a project ``.venv``, a
+    ``uv pip install --system`` CI environment, or a bare system Python.
+
+    The ``sys.prefix``-shortcut approach used previously failed on Windows CI
+    because ``actions/setup-python`` + ``uv pip install --system`` installs
+    into ``sys.prefix`` without the ``Scripts/python.exe`` sub-path that
+    ``get_venv_python()`` expects.
+
+    A ``sitecustomize.py`` is placed next to the copied interpreter so that
+    the copy can import ``claude_prospector`` and its dependencies.  Python
+    loads ``sitecustomize.py`` automatically at startup, giving the copy
+    access to the original installation's ``purelib`` and ``platlib``
+    site-packages directories.
+
+    Args:
+        tmp_path: Pytest per-test temporary directory (used for both the
+            fake venv and the flag file inherited by hooks that read
+            ``CLAUDE_PLUGIN_DATA``).
+        monkeypatch: Pytest monkeypatch fixture (used to set
+            ``CLAUDE_PLUGIN_DATA`` in the current process environment so
+            subprocess hooks pick it up via ``{**os.environ, ...}``).
+
+    Returns:
+        ``venv_dir`` — the fake venv root recorded in the flag — so
+        callers can inspect it if needed.
+    """
+    # ------------------------------------------------------------------
+    # Build a fake venv layout with a real interpreter binary.
+    # ------------------------------------------------------------------
+    venv_dir = tmp_path / "venv"
+
+    if platform.system() == "Windows":
+        scripts_dir = venv_dir / "Scripts"
+        target = scripts_dir / "python.exe"
+    else:
+        scripts_dir = venv_dir / "bin"
+        target = scripts_dir / "python"
+
+    scripts_dir.mkdir(parents=True, exist_ok=True)
+
+    # Copy the interpreter that is running these tests.  sys.executable is
+    # always a real, existing path — a project .venv on local dev, or a
+    # hostedtoolcache path on GitHub Actions.  shutil.copy2 (not symlink)
+    # is portable: Windows runners often lack the symlink privilege, and
+    # symlinks to ELF binaries are fragile on some POSIX CI setups.
+    shutil.copy2(sys.executable, target)
+
+    if platform.system() != "Windows":
+        target.chmod(0o755)
+
+    # ------------------------------------------------------------------
+    # PYTHONPATH: give the copied interpreter access to the original
+    # installation's site-packages so `import claude_prospector` resolves
+    # when a hook spawns the copy as a subprocess.
+    #
+    # We set PYTHONPATH in os.environ via monkeypatch so hooks that build
+    # their subprocess env as {**os.environ, ...} propagate it automatically.
+    # sitecustomize.py is not used because its discovery path is relative to
+    # the copy's stdlib, not to venv_dir — it would require creating a full
+    # Lib/ tree under venv_dir to be found, which defeats the "minimal fake
+    # venv" goal.
+    # ------------------------------------------------------------------
+    purelib = sysconfig.get_paths()["purelib"]
+    platlib = sysconfig.get_paths()["platlib"]
+    # Merge with any existing PYTHONPATH to avoid dropping the caller's path.
+    existing_pythonpath = os.environ.get("PYTHONPATH", "")
+    new_entries = os.pathsep.join(
+        p for p in [purelib, platlib] if p not in existing_pythonpath
+    )
+    pythonpath = (
+        os.pathsep.join([new_entries, existing_pythonpath])
+        if existing_pythonpath
+        else new_entries
+    )
+    monkeypatch.setenv("PYTHONPATH", pythonpath)
+
+    # ------------------------------------------------------------------
+    # Point CLAUDE_PLUGIN_DATA at our temp dir — this is the Pattern W seam.
+    # Hooks that run as subprocesses inherit this via os.environ (merged
+    # into the subprocess env in _make_env / equivalent helpers).
+    # ------------------------------------------------------------------
+    monkeypatch.setenv("CLAUDE_PLUGIN_DATA", str(tmp_path))
+
+    # Write the VALID flag pointing at our fake venv.
+    flag = {
+        "version": _CURRENT_VERSION,
+        "venv_path": str(venv_dir),
+        "interpreter": "python3",
+        "installed_at": "2026-01-01T00:00:00Z",
+    }
+    (tmp_path / "setup-state.json").write_text(json.dumps(flag), encoding="utf-8")
+    return venv_dir
 
 
 # ---------------------------------------------------------------------------

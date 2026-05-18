@@ -26,6 +26,51 @@ package must be importable in the environment Claude Code uses. Install with eit
 
 > A future enhancement (#67) tracks eliminating this two-step install so `claude plugin update` is sufficient on its own.
 
+## First-run setup
+
+After installing claude-prospector for the first time (or after a plugin
+update), open a new Claude Code session. You'll see a banner:
+
+> claude-prospector requires setup. Run /setup-prospector to materialise
+> the Python venv.
+
+Run `/setup-prospector` once. The skill will:
+
+1. Discover a Python 3.10+ interpreter on your system.
+2. Create a plugin-owned venv at `${CLAUDE_PLUGIN_DATA}/venv/`.
+3. Install `claude-prospector` from PyPI into that venv.
+4. Verify the install and record a setup-state flag.
+
+After setup completes, open a new session — the banner will be gone and
+the dashboard, skill-tracking, and usage-analysis features will work
+normally.
+
+You'll need to re-run `/setup-prospector` only when:
+
+- The plugin updates to a new version (banner: "venv is for vX but
+  plugin is vY").
+- The venv is corrupted or deleted (banner: "venv at <path> is
+  unreachable or corrupt").
+- You move to a new machine (per-machine setup; flag is not portable
+  across machines).
+
+**Note:** The plugin's hook scripts still run under the harness-provided
+`python` and require a working harness-environment Python interpreter.
+The venv created by `/setup-prospector` is used by the hooks for
+subprocess spawning only.
+
+### Migration from v0.6.0
+
+After upgrading to v0.7.0, open a new Claude Code session. A banner will
+prompt you to run `/setup-prospector`. This is a one-time action per
+machine.
+
+If you previously installed `claude-prospector` into `~/.claude/.venv`,
+you can leave that install in place — Pattern W hooks always use the
+plugin-owned venv via an absolute path. To reclaim disk you may
+`uv pip uninstall claude-prospector` from `~/.claude/.venv` after setup;
+this is optional.
+
 ## What the plugin provides
 
 v0.4.0 ships the full plugin surface:
