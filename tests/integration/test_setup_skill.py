@@ -12,12 +12,18 @@ published to PyPI).
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
 
 import pytest
+
+_SMOKE_ENABLED = (
+    os.environ.get("CLAUDE_PROSPECTOR_RUN_SMOKE") == "1"
+    or bool(os.environ.get("CLAUDE_PROSPECTOR_PIP_SPEC"))
+)
 
 # Use the same sys.path.insert pattern as sibling tests so pytest can collect
 # this file regardless of whether the project is installed as a package.
@@ -41,6 +47,15 @@ def fake_plugin_data(monkeypatch: pytest.MonkeyPatch):
         yield Path(tmp)
 
 
+@pytest.mark.skipif(
+    not _SMOKE_ENABLED,
+    reason=(
+        "Smoke test spawns subprocesses and pip-installs from PyPI. "
+        "Set CLAUDE_PROSPECTOR_RUN_SMOKE=1 to run, or "
+        "CLAUDE_PROSPECTOR_PIP_SPEC=<local-or-testpypi-spec> "
+        "to install from a non-default source."
+    ),
+)
 def test_full_pipeline_smoke(fake_plugin_data: Path) -> None:
     """The 8-step pipeline produces a working venv with claude-prospector importable."""
     flag_path = setup_pipeline.run_full_pipeline()
