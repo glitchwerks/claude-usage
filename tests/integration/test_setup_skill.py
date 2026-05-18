@@ -20,9 +20,8 @@ from pathlib import Path
 
 import pytest
 
-_SMOKE_ENABLED = (
-    os.environ.get("CLAUDE_PROSPECTOR_RUN_SMOKE") == "1"
-    or bool(os.environ.get("CLAUDE_PROSPECTOR_PIP_SPEC"))
+_SMOKE_ENABLED = os.environ.get("CLAUDE_PROSPECTOR_RUN_SMOKE") == "1" or bool(
+    os.environ.get("CLAUDE_PROSPECTOR_PIP_SPEC")
 )
 
 # Use the same sys.path.insert pattern as sibling tests so pytest can collect
@@ -77,7 +76,12 @@ def test_full_pipeline_smoke(fake_plugin_data: Path) -> None:
     venv_python = setup_pipeline.get_venv_python(venv_dir)
     assert venv_python.exists()
 
-    # claude_prospector imports from inside the venv, not system Python
+    # claude_prospector imports from inside the venv, not system Python.
+    # cwd=fake_plugin_data ensures the subprocess is not launched from the
+    # repo source tree, which would otherwise prepend the source dir to
+    # sys.path and cause the import to resolve to the local checkout instead
+    # of the freshly-installed venv copy (cwd-prepending behaviour on Python
+    # < 3.11 where -P / PYTHONSAFEPATH are unavailable).
     result = subprocess.run(
         [
             str(venv_python),
@@ -86,13 +90,12 @@ def test_full_pipeline_smoke(fake_plugin_data: Path) -> None:
         ],
         capture_output=True,
         text=True,
+        cwd=str(fake_plugin_data),
     )
-    assert result.returncode == 0, (
-        f"import claude_prospector failed: {result.stderr}"
-    )
-    assert str(venv_dir) in result.stdout, (
-        f"Imported claude_prospector from outside the venv: {result.stdout!r}"
-    )
+    assert result.returncode == 0, f"import claude_prospector failed: {result.stderr}"
+    assert (
+        str(venv_dir) in result.stdout
+    ), f"Imported claude_prospector from outside the venv: {result.stdout!r}"
 
 
 def test_wipe_idempotent(fake_plugin_data: Path) -> None:
@@ -130,15 +133,11 @@ def test_discover_python_handles_quoted_path(
     spaced_dir.mkdir()
     fake_py = spaced_dir / "python.exe"
     fake_py.touch()
-    monkeypatch.setenv(
-        "CLAUDE_PROSPECTOR_BOOTSTRAP_PYTHON", str(fake_py)
-    )
+    monkeypatch.setenv("CLAUDE_PROSPECTOR_BOOTSTRAP_PYTHON", str(fake_py))
     # discover_python() should not raise on the spaced candidate; should
     # fall through to the real python3/python and succeed.
     interpreter = setup_pipeline.discover_python()
-    assert interpreter, (
-        "Should fall through past the unusable spaced candidate"
-    )
+    assert interpreter, "Should fall through past the unusable spaced candidate"
 
 
 def test_wipe_venv_tolerates_locked_files(

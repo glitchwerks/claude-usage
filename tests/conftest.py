@@ -24,37 +24,48 @@ _CURRENT_VERSION = _setup_state.get_current_version()
 
 
 @pytest.fixture()
-def valid_setup_state(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> Path:
+def valid_setup_state(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """Redirect CLAUDE_PLUGIN_DATA to tmp_path and write a VALID setup-state flag.
 
-    Uses the project's real .venv as the venv_path so subprocess calls to
-    _venv_python succeed on all platforms (Windows cannot execute a plain
-    Python script named .exe; using the real venv avoids that constraint).
+    Uses ``sys.prefix`` as the ``venv_path`` in the flag.  ``sys.prefix`` is
+    always the root of the Python installation currently running the tests —
+    the project ``.venv`` locally, or the system Python in CI where packages
+    are installed with ``uv pip install --system``.
+
+    This means the ``venv_python`` path that ``setup_state.get_venv_python()``
+    derives from the flag always points to a real, executable Python that has
+    ``claude_prospector`` and all of its dependencies installed.  No venv
+    directory needs to be created and no binary needs to be copied.
+
+    Args:
+        tmp_path: Pytest per-test temporary directory (used for the flag
+            file and inherited by hooks that read ``CLAUDE_PLUGIN_DATA``).
+        monkeypatch: Pytest monkeypatch fixture (used to set
+            ``CLAUDE_PLUGIN_DATA`` in the current process environment so
+            subprocess hooks pick it up via ``{**os.environ, ...}``).
 
     Returns:
-        The venv directory (the project's real .venv) so callers can
-        inspect it if needed.
+        ``Path(sys.prefix)`` — the venv root recorded in the flag — so
+        callers can inspect it if needed.
     """
     # Point CLAUDE_PLUGIN_DATA at our temp dir — this is the Pattern W seam.
+    # Hooks that run as subprocesses inherit this via os.environ (merged into
+    # the subprocess env in _make_env / equivalent helpers).
     monkeypatch.setenv("CLAUDE_PLUGIN_DATA", str(tmp_path))
 
-    # Use the project's real .venv so the venv python is a proper executable
-    # that subprocess.run() can invoke on all platforms (including Windows,
-    # where a plain Python script named .exe cannot be run as a native binary).
-    venv_dir = _WORKTREE / ".venv"
+    # sys.prefix is the root of the currently-active Python environment.
+    # setup_state.get_venv_python(sys.prefix) resolves to sys.executable
+    # (or a symlink to it), which has all required packages installed.
+    venv_dir = Path(sys.prefix)
 
-    # Write the VALID flag pointing at the real .venv.
+    # Write the VALID flag pointing at sys.prefix as the venv.
     flag = {
         "version": _CURRENT_VERSION,
         "venv_path": str(venv_dir),
         "interpreter": "python3",
         "installed_at": "2026-01-01T00:00:00Z",
     }
-    (tmp_path / "setup-state.json").write_text(
-        json.dumps(flag), encoding="utf-8"
-    )
+    (tmp_path / "setup-state.json").write_text(json.dumps(flag), encoding="utf-8")
     return venv_dir
 
 

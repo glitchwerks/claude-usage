@@ -479,9 +479,7 @@ def main() -> int:
             return 0  # Banner already shown by SessionStart hook
         # Pre-compute venv python here so both subprocess callsites below
         # can use _venv_python directly without re-accessing _state.flag.
-        _venv_python = str(
-            setup_state.get_venv_python(Path(_state.flag["venv_path"]))
-        )
+        _venv_python = str(setup_state.get_venv_python(Path(_state.flag["venv_path"])))
     except Exception:
         return 0  # Defensive: never crash the session
 

@@ -301,9 +301,7 @@ class TestRegenSuccess:
         ), f"dashboard.html not created. stderr: {result.stderr!r}"
         assert dashboard.stat().st_size > 0
 
-    def test_dashboard_is_html(
-        self, tmp_path: Path, valid_setup_state: Path
-    ) -> None:
+    def test_dashboard_is_html(self, tmp_path: Path, valid_setup_state: Path) -> None:
         """Regenerated dashboard.html contains HTML markup."""
         env = _make_env(tmp_path, autoregen=True)
         _run_hook(env)
@@ -329,9 +327,7 @@ class TestRegenSuccess:
 class TestRegenFailure:
     """When the regen subprocess fails, the hook writes a failure page."""
 
-    def test_writes_failure_page(
-        self, tmp_path: Path, valid_setup_state: Path
-    ) -> None:
+    def test_writes_failure_page(self, tmp_path: Path, valid_setup_state: Path) -> None:
         """A failed regen subprocess causes a failure page to be written."""
         # Create a wrapper script that replaces the dashboard subcommand
         # with one that always fails. We do this by pointing to a fake
