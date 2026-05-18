@@ -39,8 +39,16 @@ from pathlib import Path
 _WORKTREE = Path(__file__).parent.parent
 _HOOK_PATH = _WORKTREE / "hooks" / "dashboard-regen.py"
 
-# Fake plugin.json manifest version (must be parseable as a version string)
-_MANIFEST_VERSION = "0.4.0"
+# Use the actual installed version so the Pattern W guard can read a matching
+# version from CLAUDE_PLUGIN_ROOT/plugin.json and classify the flag as VALID.
+# sys and Path are already imported above.
+sys.path.insert(0, str(_WORKTREE / "hooks" / "lib"))
+import setup_state as _setup_state  # noqa: E402
+
+# The default manifest version must match the installed package version so
+# non-mismatch tests satisfy the guard (flag.version == current_version).
+# Version-mismatch tests override this with an explicit higher value ("999.0.0").
+_MANIFEST_VERSION = _setup_state.get_current_version()
 
 
 # ---------------------------------------------------------------------------
@@ -84,11 +92,23 @@ def _make_env(
     # Hook log
     hook_log = tmp_path / "hook.log"
 
-    # Plugin manifest
+    # Plugin manifest — two copies with intentionally different purposes:
+    # 1. plugin_root/plugin.json: read by the hook's existing version-check
+    #    logic (Step 4 of main()) via CLAUDE_PLUGIN_ROOT/plugin.json.
+    #    Carries manifest_version — may be "999.0.0" for mismatch tests.
+    # 2. plugin_root/.claude-plugin/plugin.json: read by setup_state
+    #    .get_current_version() when CLAUDE_PLUGIN_ROOT has no pyproject.toml.
+    #    Always carries _MANIFEST_VERSION (the real installed version) so the
+    #    Pattern W guard sees VALID (flag.version == current_version).
     plugin_root = tmp_path / "plugin-root"
     plugin_root.mkdir(parents=True, exist_ok=True)
     (plugin_root / "plugin.json").write_text(
         json.dumps({"version": manifest_version}), encoding="utf-8"
+    )
+    claude_plugin_dir = plugin_root / ".claude-plugin"
+    claude_plugin_dir.mkdir(parents=True, exist_ok=True)
+    (claude_plugin_dir / "plugin.json").write_text(
+        json.dumps({"version": _MANIFEST_VERSION}), encoding="utf-8"
     )
 
     env = {
@@ -157,10 +177,19 @@ def _make_env_no_config(
     dashboard_file = tmp_path / "dashboard.html"
     hook_log = tmp_path / "hook.log"
 
+    # See _make_env comment: two copies of plugin.json are needed.
+    # plugin_root/plugin.json: for the hook's version-check (Step 4).
+    # plugin_root/.claude-plugin/plugin.json: for setup_state
+    # .get_current_version() so the Pattern W guard sees VALID state.
     plugin_root = tmp_path / "plugin-root"
     plugin_root.mkdir(parents=True, exist_ok=True)
     (plugin_root / "plugin.json").write_text(
         json.dumps({"version": manifest_version}), encoding="utf-8"
+    )
+    claude_plugin_dir = plugin_root / ".claude-plugin"
+    claude_plugin_dir.mkdir(parents=True, exist_ok=True)
+    (claude_plugin_dir / "plugin.json").write_text(
+        json.dumps({"version": _MANIFEST_VERSION}), encoding="utf-8"
     )
 
     env = {
@@ -223,7 +252,9 @@ class TestAutoregenDisabled:
 class TestVersionMismatch:
     """When the manifest version > package version, write the mismatch page."""
 
-    def test_writes_version_mismatch_page(self, tmp_path: Path) -> None:
+    def test_writes_version_mismatch_page(
+        self, tmp_path: Path, valid_setup_state: Path
+    ) -> None:
         """A higher manifest version causes the mismatch page to be written."""
         # Set manifest version to something higher than the installed package
         env = _make_env(tmp_path, autoregen=True, manifest_version="999.0.0")
@@ -233,7 +264,9 @@ class TestVersionMismatch:
         content = dashboard.read_text(encoding="utf-8")
         assert "mismatch" in content.lower() or "version" in content.lower()
 
-    def test_mismatch_page_shows_both_versions(self, tmp_path: Path) -> None:
+    def test_mismatch_page_shows_both_versions(
+        self, tmp_path: Path, valid_setup_state: Path
+    ) -> None:
         """Mismatch page includes both manifest and package version info."""
         env = _make_env(tmp_path, autoregen=True, manifest_version="999.0.0")
         _run_hook(env)
@@ -255,7 +288,9 @@ class TestVersionMismatch:
 class TestRegenSuccess:
     """When autoregen=true and versions match, the dashboard is regenerated."""
 
-    def test_dashboard_file_created(self, tmp_path: Path) -> None:
+    def test_dashboard_file_created(
+        self, tmp_path: Path, valid_setup_state: Path
+    ) -> None:
         """Successful regen creates a non-empty dashboard.html."""
         env = _make_env(tmp_path, autoregen=True)
         result = _run_hook(env)
@@ -266,14 +301,18 @@ class TestRegenSuccess:
         ), f"dashboard.html not created. stderr: {result.stderr!r}"
         assert dashboard.stat().st_size > 0
 
-    def test_dashboard_is_html(self, tmp_path: Path) -> None:
+    def test_dashboard_is_html(
+        self, tmp_path: Path, valid_setup_state: Path
+    ) -> None:
         """Regenerated dashboard.html contains HTML markup."""
         env = _make_env(tmp_path, autoregen=True)
         _run_hook(env)
         content = (tmp_path / "dashboard.html").read_text(encoding="utf-8")
         assert "<html" in content.lower() or "<!doctype" in content.lower()
 
-    def test_hook_log_written_on_success(self, tmp_path: Path) -> None:
+    def test_hook_log_written_on_success(
+        self, tmp_path: Path, valid_setup_state: Path
+    ) -> None:
         """On success the hook writes a log entry to hook.log."""
         env = _make_env(tmp_path, autoregen=True)
         _run_hook(env)
@@ -290,7 +329,9 @@ class TestRegenSuccess:
 class TestRegenFailure:
     """When the regen subprocess fails, the hook writes a failure page."""
 
-    def test_writes_failure_page(self, tmp_path: Path) -> None:
+    def test_writes_failure_page(
+        self, tmp_path: Path, valid_setup_state: Path
+    ) -> None:
         """A failed regen subprocess causes a failure page to be written."""
         # Create a wrapper script that replaces the dashboard subcommand
         # with one that always fails. We do this by pointing to a fake
@@ -343,7 +384,9 @@ class TestRegenFailure:
         content = dashboard.read_text(encoding="utf-8")
         assert "fail" in content.lower() or "error" in content.lower()
 
-    def test_failure_page_contains_stderr(self, tmp_path: Path) -> None:
+    def test_failure_page_contains_stderr(
+        self, tmp_path: Path, valid_setup_state: Path
+    ) -> None:
         """Failure page must include the captured stderr from the regen run."""
         env = _make_env(tmp_path, autoregen=True)
         env["CLAUDE_PROSPECTOR_FAIL_REGEN"] = "1"
@@ -368,7 +411,9 @@ class TestRegenFailure:
 class TestAutoregenArgParsing:
     """--autoregen CLI arg gates the hook; truthy/falsy values are parsed."""
 
-    def test_autoregen_true_enables_regen(self, tmp_path: Path) -> None:
+    def test_autoregen_true_enables_regen(
+        self, tmp_path: Path, valid_setup_state: Path
+    ) -> None:
         """--autoregen true triggers dashboard generation (success path)."""
         env = _make_env_no_config(tmp_path)
         result = _run_hook(env, autoregen_arg="true")
@@ -386,21 +431,27 @@ class TestAutoregenArgParsing:
         assert result.returncode == 0, result.stderr
         assert not (tmp_path / "dashboard.html").exists()
 
-    def test_autoregen_1_enables_regen(self, tmp_path: Path) -> None:
+    def test_autoregen_1_enables_regen(
+        self, tmp_path: Path, valid_setup_state: Path
+    ) -> None:
         """--autoregen 1 is treated as truthy."""
         env = _make_env_no_config(tmp_path)
         result = _run_hook(env, autoregen_arg="1")
         assert result.returncode == 0, result.stderr
         assert (tmp_path / "dashboard.html").exists()
 
-    def test_autoregen_yes_enables_regen(self, tmp_path: Path) -> None:
+    def test_autoregen_yes_enables_regen(
+        self, tmp_path: Path, valid_setup_state: Path
+    ) -> None:
         """--autoregen yes is treated as truthy."""
         env = _make_env_no_config(tmp_path)
         result = _run_hook(env, autoregen_arg="yes")
         assert result.returncode == 0, result.stderr
         assert (tmp_path / "dashboard.html").exists()
 
-    def test_autoregen_true_case_insensitive(self, tmp_path: Path) -> None:
+    def test_autoregen_true_case_insensitive(
+        self, tmp_path: Path, valid_setup_state: Path
+    ) -> None:
         """--autoregen TRUE (uppercase) is treated as truthy."""
         env = _make_env_no_config(tmp_path)
         result = _run_hook(env, autoregen_arg="TRUE")
@@ -431,7 +482,7 @@ class TestLegacyConfigFallback:
     """When --autoregen is absent, the hook falls back to config.json."""
 
     def test_no_arg_with_autoregen_true_in_config_enables_regen(
-        self, tmp_path: Path
+        self, tmp_path: Path, valid_setup_state: Path
     ) -> None:
         """No --autoregen arg + config.json autoregen=true triggers regen."""
         env = _make_env(tmp_path, autoregen=True)
@@ -465,7 +516,7 @@ class TestMigrationNotice:
     """Legacy config.json triggers a one-time migration notice in hook.log."""
 
     def test_migration_notice_logged_when_legacy_config_present(
-        self, tmp_path: Path
+        self, tmp_path: Path, valid_setup_state: Path
     ) -> None:
         """First run with legacy config.json writes [migration] to hook.log."""
         # Pass --autoregen true so the hook proceeds past the autoregen gate,
@@ -492,7 +543,9 @@ class TestMigrationNotice:
                 "[migration]" not in content
             ), "Should not log [migration] when no legacy config present"
 
-    def test_migration_notice_written_only_once(self, tmp_path: Path) -> None:
+    def test_migration_notice_written_only_once(
+        self, tmp_path: Path, valid_setup_state: Path
+    ) -> None:
         """Second run does not repeat the [migration] notice (sentinel guards)."""
         env = _make_env(tmp_path, autoregen=True)
 
@@ -509,7 +562,9 @@ class TestMigrationNotice:
             "[migration]" not in hook_log_after_second
         ), "Migration notice should not appear on second run (sentinel check)"
 
-    def test_sentinel_file_created_after_first_run(self, tmp_path: Path) -> None:
+    def test_sentinel_file_created_after_first_run(
+        self, tmp_path: Path, valid_setup_state: Path
+    ) -> None:
         """Sentinel file config.json.migrated-notice is created after notice."""
         env = _make_env(tmp_path, autoregen=True)
         _run_hook(env, autoregen_arg="true")

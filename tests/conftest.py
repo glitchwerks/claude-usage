@@ -4,9 +4,58 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 from pathlib import Path
 
 import pytest
+
+# ---------------------------------------------------------------------------
+# Pattern W: shared fixture for hook tests that require a VALID setup state
+# ---------------------------------------------------------------------------
+
+# Resolve current version dynamically so VALID-flag fixtures aren't classified
+# STALE when pyproject.toml contains a pre-release version (e.g. 0.7.0rc1).
+_TESTS_DIR = Path(__file__).parent
+_WORKTREE = _TESTS_DIR.parent
+sys.path.insert(0, str(_WORKTREE / "hooks" / "lib"))
+import setup_state as _setup_state  # noqa: E402
+
+_CURRENT_VERSION = _setup_state.get_current_version()
+
+
+@pytest.fixture()
+def valid_setup_state(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> Path:
+    """Redirect CLAUDE_PLUGIN_DATA to tmp_path and write a VALID setup-state flag.
+
+    Uses the project's real .venv as the venv_path so subprocess calls to
+    _venv_python succeed on all platforms (Windows cannot execute a plain
+    Python script named .exe; using the real venv avoids that constraint).
+
+    Returns:
+        The venv directory (the project's real .venv) so callers can
+        inspect it if needed.
+    """
+    # Point CLAUDE_PLUGIN_DATA at our temp dir — this is the Pattern W seam.
+    monkeypatch.setenv("CLAUDE_PLUGIN_DATA", str(tmp_path))
+
+    # Use the project's real .venv so the venv python is a proper executable
+    # that subprocess.run() can invoke on all platforms (including Windows,
+    # where a plain Python script named .exe cannot be run as a native binary).
+    venv_dir = _WORKTREE / ".venv"
+
+    # Write the VALID flag pointing at the real .venv.
+    flag = {
+        "version": _CURRENT_VERSION,
+        "venv_path": str(venv_dir),
+        "interpreter": "python3",
+        "installed_at": "2026-01-01T00:00:00Z",
+    }
+    (tmp_path / "setup-state.json").write_text(
+        json.dumps(flag), encoding="utf-8"
+    )
+    return venv_dir
 
 
 # ---------------------------------------------------------------------------

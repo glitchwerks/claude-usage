@@ -354,7 +354,9 @@ class TestAppendEvent:
 
 
 class TestMainSkillToolSubprocess:
-    def test_logs_skill_invoked_event(self, tmp_path: Path) -> None:
+    def test_logs_skill_invoked_event(
+        self, tmp_path: Path, valid_setup_state: Path
+    ) -> None:
         """Hook should write a skill_invoked event for Skill tool calls."""
         payload = {
             "tool_name": "Skill",
@@ -387,7 +389,9 @@ class TestMainSkillToolSubprocess:
         tracking_dir = tmp_path / "skill-tracking"
         assert not any(tracking_dir.glob("*.jsonl")) if tracking_dir.exists() else True
 
-    def test_timestamp_is_present_and_utc(self, tmp_path: Path) -> None:
+    def test_timestamp_is_present_and_utc(
+        self, tmp_path: Path, valid_setup_state: Path
+    ) -> None:
         """skill_invoked event must carry a UTC ISO timestamp."""
         payload = {
             "tool_name": "Skill",
@@ -505,7 +509,9 @@ class TestMainSkillToolDirect:
             mod.main()
         return tracking_dir
 
-    def test_logs_skill_invoked_event(self, tmp_path: Path) -> None:
+    def test_logs_skill_invoked_event(
+        self, tmp_path: Path, valid_setup_state: Path
+    ) -> None:
         payload = {
             "tool_name": "Skill",
             "tool_input": {"skill": "git"},
@@ -531,7 +537,9 @@ class TestMainSkillToolDirect:
         today_file = tracking_dir / f"{_today()}.jsonl"
         assert not today_file.exists()
 
-    def test_timestamp_is_present_and_utc(self, tmp_path: Path) -> None:
+    def test_timestamp_is_present_and_utc(
+        self, tmp_path: Path, valid_setup_state: Path
+    ) -> None:
         payload = {
             "tool_name": "Skill",
             "tool_input": {"skill": "python"},
@@ -575,7 +583,9 @@ class TestMainAgentToolDirect:
             mod.main()
         return tracking_dir
 
-    def test_logs_skill_passed_for_referenced_skills(self, tmp_path: Path) -> None:
+    def test_logs_skill_passed_for_referenced_skills(
+        self, tmp_path: Path, valid_setup_state: Path
+    ) -> None:
         payload = {
             "tool_name": "Agent",
             "tool_input": {
@@ -619,7 +629,9 @@ class TestMainAgentToolDirect:
         today_file = tracking_dir / f"{_today()}.jsonl"
         assert not today_file.exists()
 
-    def test_only_logs_skills_in_allowlist(self, tmp_path: Path) -> None:
+    def test_only_logs_skills_in_allowlist(
+        self, tmp_path: Path, valid_setup_state: Path
+    ) -> None:
         payload = {
             "tool_name": "Agent",
             "tool_input": {

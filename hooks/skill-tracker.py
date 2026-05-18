@@ -26,6 +26,13 @@ import sys
 from datetime import date, datetime, timezone
 from pathlib import Path
 
+# ---------------------------------------------------------------------------
+# Pattern W: import setup_state helper from hooks/lib/
+# ---------------------------------------------------------------------------
+# sys and Path are already imported above.
+sys.path.insert(0, str(Path(__file__).parent / "lib"))
+import setup_state  # noqa: E402
+
 
 # ---------------------------------------------------------------------------
 # Path resolution — overridable via environment variables for testability
@@ -219,6 +226,17 @@ def main() -> None:
 
     Silently returns on JSON parse errors or missing fields.
     """
+    # Pattern W guard: only proceed if setup state is VALID.
+    # This check is cheap (flag read + path exists) — no subprocess.
+    # Runs on every PreToolUse(Skill|Agent) fire, so it must stay minimal.
+    try:
+        _current_ver = setup_state.get_current_version()
+        _state = setup_state.read_setup_state(_current_ver)
+        if _state.status != "VALID":
+            return  # Banner already shown by SessionStart hook; silent exit here
+    except Exception:
+        return  # Defensive: never crash the session on a guard error
+
     try:
         data = json.load(sys.stdin)
     except (json.JSONDecodeError, ValueError):
