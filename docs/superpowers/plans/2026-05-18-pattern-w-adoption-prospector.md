@@ -352,7 +352,7 @@ import platform
 import re
 import sys
 from pathlib import Path
-from typing import NamedTuple
+from typing import Literal, NamedTuple
 
 
 # ---------------------------------------------------------------------------
@@ -368,7 +368,7 @@ class SetupStateResult(NamedTuple):
         flag: The parsed flag dict when status is VALID or STALE; None otherwise.
     """
 
-    status: str  # "VALID" | "MISSING" | "STALE" | "BROKEN"
+    status: Literal["VALID", "MISSING", "STALE", "BROKEN"]
     flag: dict | None
 
 
@@ -429,7 +429,7 @@ def _get_plugin_root() -> Path:
 
     Honors $CLAUDE_PLUGIN_ROOT when set (test seam and Anthropic harness);
     otherwise computes from this file's location (hooks/lib/setup_state.py
-    is two levels below the plugin root).
+    is three levels below the plugin root).
 
     Returns:
         Absolute path to the plugin root.
@@ -437,7 +437,8 @@ def _get_plugin_root() -> Path:
     env_override = os.environ.get("CLAUDE_PLUGIN_ROOT")
     if env_override:
         return Path(env_override)
-    # This file: <root>/hooks/lib/setup_state.py — root is two levels up
+    # This file: <root>/hooks/lib/setup_state.py
+    # Three levels up: setup_state.py → lib/ → hooks/ → <root>/
     return Path(__file__).parent.parent.parent
 
 
@@ -1135,12 +1136,16 @@ from __future__ import annotations
 
 import json
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
 import pytest
 
-from tests.integration import setup_pipeline
+# Use the same sys.path.insert pattern as sibling tests so pytest can collect
+# this file regardless of whether the project is installed as a package.
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from integration import setup_pipeline  # noqa: E402
 
 
 @pytest.fixture()
@@ -1292,17 +1297,17 @@ def _make_env(
 ) -> dict[str, str]:
     """Build the subprocess environment for a hook invocation.
 
-    Sets CLAUDE_PLUGIN_DATA (redirects flag and runtime artifacts),
-    CLAUDE_PLUGIN_ROOT (so get_current_version() finds pyproject.toml),
-    and PYTHONPATH (so setup_state is importable from hooks/lib/).
+    Sets CLAUDE_PLUGIN_DATA (redirects flag and runtime artifacts) and
+    CLAUDE_PLUGIN_ROOT (so get_current_version() finds pyproject.toml).
+
+    PYTHONPATH is intentionally NOT set here. The hook contains its own
+    sys.path.insert(0, str(Path(__file__).parent / "lib")) block — that is
+    the production import mechanism. Adding PYTHONPATH in the test would mask
+    regressions where the hook's own insert is accidentally removed.
     """
     env = os.environ.copy()
     env["CLAUDE_PLUGIN_DATA"] = str(tmp_path)
     env["CLAUDE_PLUGIN_ROOT"] = str(plugin_root or _WORKTREE)
-    # Allow the hook to import setup_state from hooks/lib/
-    hooks_lib = str(_WORKTREE / "hooks" / "lib")
-    existing_path = env.get("PYTHONPATH", "")
-    env["PYTHONPATH"] = hooks_lib + (os.pathsep + existing_path if existing_path else "")
     if extra:
         env.update(extra)
     return env
@@ -1806,7 +1811,13 @@ def test_non_valid_state_exits_silent(tmp_path: Path) -> None:
 
 
 def test_valid_state_allows_tracking(tmp_path: Path) -> None:
-    """VALID flag → hook proceeds and writes a tracking event for a Skill invocation."""
+    """VALID flag → hook proceeds and writes a tracking event for a Skill invocation.
+
+    Using tool_name="Skill" is deliberate: the Skill path in main() records the
+    event directly without consulting _get_allowlist() — allowlist filtering only
+    applies to Agent dispatch. This means "some-skill" does not need to be in the
+    filesystem allowlist; the test is not brittle against the allowlist content.
+    """
     venv_dir = _make_fake_venv(tmp_path)
     _write_flag(tmp_path, {
         "version": "0.7.0",
@@ -1814,7 +1825,8 @@ def test_valid_state_allows_tracking(tmp_path: Path) -> None:
         "interpreter": "python3",
         "installed_at": "2026-01-01T00:00:00Z",
     })
-    # Patch CLAUDE_PLUGIN_ROOT version so get_current_version returns 0.7.0
+    # CLAUDE_PLUGIN_ROOT is set in _make_env to _WORKTREE so get_current_version()
+    # reads pyproject.toml and returns "0.7.0" (matching the flag version → VALID).
     payload = {"tool_name": "Skill", "tool_input": {"skill": "some-skill"}, "session_id": "test-session"}
     result = _run_hook(tmp_path, payload)
     assert result.returncode == 0
@@ -1885,16 +1897,33 @@ def _write_flag(tmp_path: Path, data: dict) -> None:
 
 
 def _make_fake_venv_python_success(tmp_path: Path) -> Path:
-    """Create a venv with a python stub that exits 0 on --version and -m claude_prospector."""
+    """Create a venv with a python stub that writes a sentinel on invocation.
+
+    The sentinel file records the absolute path of the interpreter that was
+    actually called. The test then asserts that path equals the fake-venv
+    python path, not sys.executable — this is the core regression check for
+    BLOCKING-1: the hook must use _venv_python, not sys.executable.
+
+    The stub also handles version-check and dashboard regen args so the hook
+    can complete its normal flow.
+    """
     venv_dir = tmp_path / "venv"
     if platform.system() == "Windows":
         venv_python = venv_dir / "Scripts" / "python.exe"
     else:
         venv_python = venv_dir / "bin" / "python"
     venv_python.parent.mkdir(parents=True, exist_ok=True)
+    # The sentinel path is passed via an env var so the script can write it.
+    # The sentinel records sys.executable (which, from the stub's perspective,
+    # IS the fake-venv python path — the absolute path the hook invoked).
     script = textwrap.dedent(f"""\
         #!/usr/bin/env python3
-        import sys
+        import os, sys
+        # Write the sentinel: records the absolute path of this interpreter.
+        sentinel = os.environ.get("CLAUDE_PROSPECTOR_SENTINEL_FILE")
+        if sentinel:
+            with open(sentinel, "w") as f:
+                f.write(sys.executable)
         args = sys.argv[1:]
         if "--version" in args or ("-m" in args and "claude_prospector" in args and "--version" in args):
             print("claude-prospector {_MANIFEST_VERSION}")
@@ -1935,26 +1964,42 @@ def test_non_valid_state_exits_silent(tmp_path: Path) -> None:
 
 
 def test_valid_state_uses_venv_python_for_regen(tmp_path: Path) -> None:
-    """VALID flag → regen subprocess is called (via FAIL_REGEN to observe execution path)."""
+    """VALID flag → both subprocess callsites use the venv python, not sys.executable.
+
+    The fake-venv python stub writes its own absolute path (sys.executable from
+    the stub's perspective) to a sentinel file. The test asserts that sentinel
+    path equals the fake venv python path — proving _venv_python, not
+    sys.executable, was passed to subprocess.run().
+    """
     venv_dir = _make_fake_venv_python_success(tmp_path)
+    if platform.system() == "Windows":
+        expected_venv_python = venv_dir / "Scripts" / "python.exe"
+    else:
+        expected_venv_python = venv_dir / "bin" / "python"
+
+    sentinel_file = tmp_path / "invoked_interpreter.txt"
     _write_flag(tmp_path, {
         "version": "0.7.0",
         "venv_path": str(venv_dir),
         "interpreter": "python3",
         "installed_at": "2026-01-01T00:00:00Z",
     })
-    env = _make_env(tmp_path, extra={"CLAUDE_PROSPECTOR_FAIL_REGEN": "1"})
+    env = _make_env(tmp_path, extra={
+        "CLAUDE_PROSPECTOR_SENTINEL_FILE": str(sentinel_file),
+    })
     result = _run_hook(tmp_path, env)
-    assert result.returncode == 0
-    # FAIL_REGEN causes the hook to write a failure page — meaning it reached
-    # the regen callsite (proof that the VALID guard let it through)
-    dashboard = tmp_path / "dashboard.html"
-    assert dashboard.exists(), (
-        "Dashboard file should exist after hook ran with VALID state "
-        f"(even as failure page). stderr: {result.stderr}"
+    assert result.returncode == 0, f"Hook exited non-zero. stderr: {result.stderr}"
+
+    # The sentinel must exist — meaning the fake venv python was actually invoked.
+    assert sentinel_file.exists(), (
+        "Sentinel file not written: the hook never invoked the venv python "
+        f"(VALID guard may not have fired). stderr: {result.stderr}"
     )
-    content = dashboard.read_text(encoding="utf-8")
-    assert content  # Failure page has content
+    invoked_path = Path(sentinel_file.read_text(encoding="utf-8").strip())
+    assert invoked_path.resolve() == expected_venv_python.resolve(), (
+        f"Hook invoked {invoked_path!r} instead of the venv python "
+        f"{expected_venv_python!r}. The hook may have used sys.executable."
+    )
 ```
 
 - [ ] **Step 2: Run failing tests**
@@ -2041,6 +2086,9 @@ import setup_state  # noqa: E402
         _state = setup_state.read_setup_state(_current_ver)
         if _state.status != "VALID":
             return 0  # Banner already shown by SessionStart hook
+        # Pre-compute venv python here so both subprocess callsites below
+        # can use _venv_python directly without re-accessing _state.flag.
+        _venv_python = str(setup_state.get_venv_python(Path(_state.flag["venv_path"])))
     except Exception:
         return 0  # Defensive: never crash the session
 ```
@@ -2059,10 +2107,9 @@ Current code (lines 506–514):
             )
 ```
 
-Replace with (uses `get_venv_python`, no `cwd=`):
+Replace with (uses `_venv_python` already bound by the guard at 4b, no `cwd=`):
 ```python
         try:
-            _venv_python = str(setup_state.get_venv_python(Path(_state.flag["venv_path"])))
             ver_result = subprocess.run(
                 [_venv_python, "-m", "claude_prospector", "--version"],
                 capture_output=True,
@@ -2094,7 +2141,7 @@ Current code (lines 543–560):
         )
 ```
 
-Replace with (uses `_venv_python` already resolved above, no `cwd=`):
+Replace with (uses `_venv_python` bound in the guard at 4b, no `cwd=`):
 ```python
         regen_result = subprocess.run(
             [
@@ -2114,7 +2161,7 @@ Replace with (uses `_venv_python` already resolved above, no `cwd=`):
         )
 ```
 
-Note: `_venv_python` is the string path resolved at 4c. Because both callsites are in the same function and 4c runs first, `_venv_python` is in scope at 4d.
+Note: `_venv_python` is resolved once in the guard block at step 4b. Both 4c and 4d use the already-bound name — no re-access of `_state.flag` at either callsite.
 
 - [ ] **Step 5: Run the guard tests**
 
@@ -2138,12 +2185,111 @@ Expected: All tests pass (12 from test_setup_state + 5 from test_check_prospecto
 "./.venv/Scripts/python.exe" -m pytest tests/test_skill_tracker_hook.py tests/test_dashboard_regen_hook.py -v
 ```
 
-Expected: All existing tests still pass. If any fail, the guard is interfering with existing test fixtures — check that the test fixtures set `CLAUDE_PLUGIN_DATA` to a directory that either (a) has no `setup-state.json` (non-VALID → guard exits silently before the old path, which may break existing tests that expect the old path to run) or (b) has a VALID flag with a fake venv python stub. If existing tests break, they test a path that the guard now short-circuits; the fix is to either add a VALID flag to those test environments OR document that the guard test is the new canonical path.
+Expected: All existing tests still pass. If any fail, the guard is interfering with existing test fixtures — check that the test fixtures set `CLAUDE_PLUGIN_DATA` to a directory that either (a) has no `setup-state.json` (non-VALID → guard exits silently before the old path, which may break existing tests that expect the old path to run) or (b) has a VALID flag with a fake venv python stub. If existing tests break, continue to Step 8.
 
-- [ ] **Step 8: Commit**
+- [ ] **Step 8: Patch existing hook tests to satisfy the new guard**
+
+The existing `tests/test_dashboard_regen_hook.py::_make_env` and `tests/test_skill_tracker_hook.py::_run_hook` do not set `CLAUDE_PLUGIN_DATA`. After Task 4 adds the guard, both hooks will read `read_setup_state()` → get MISSING (no flag file in the real home dir, or a real home-dir flag) → return 0 silently. The tests that assert regen/tracking logic was reached will then fail because the guard short-circuits them.
+
+**Fix: extract a shared VALID-flag fixture into `tests/conftest.py`** (which pytest auto-discovers for both test files), then apply it to the affected tests in each file.
+
+**Add to `tests/conftest.py`** (this file already exists — add the fixture below the existing content):
+
+```python
+# ---------------------------------------------------------------------------
+# Pattern W: shared fixture for hook tests that require a VALID setup state
+# ---------------------------------------------------------------------------
+
+import json
+import os
+import platform
+import textwrap
+from pathlib import Path
+
+import pytest
+
+
+@pytest.fixture()
+def valid_setup_state(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Redirect CLAUDE_PLUGIN_DATA to tmp_path and write a VALID setup-state flag.
+
+    The fake venv python is a real Python script that exits 0 for all
+    invocations — it is not a zero-byte stub, because Windows cannot
+    execute zero-byte .exe files via subprocess.
+
+    Returns the venv directory so callers can further configure it if needed.
+    """
+    # Point CLAUDE_PLUGIN_DATA at our temp dir — this is the Pattern W seam.
+    monkeypatch.setenv("CLAUDE_PLUGIN_DATA", str(tmp_path))
+
+    # Build a fake venv python that the exists() check will pass and that
+    # subprocess.run() can actually execute (exits 0 for any args).
+    venv_dir = tmp_path / "venv"
+    if platform.system() == "Windows":
+        venv_python = venv_dir / "Scripts" / "python.exe"
+    else:
+        venv_python = venv_dir / "bin" / "python"
+    venv_python.parent.mkdir(parents=True, exist_ok=True)
+    venv_python.write_text(
+        textwrap.dedent("""\
+            #!/usr/bin/env python3
+            # Fake venv python for Pattern W tests — exits 0 for all invocations.
+            import sys
+            sys.exit(0)
+        """),
+        encoding="utf-8",
+    )
+    if platform.system() != "Windows":
+        venv_python.chmod(0o755)
+
+    # Write the VALID flag.
+    flag = {
+        "version": "0.7.0",
+        "venv_path": str(venv_dir),
+        "interpreter": "python3",
+        "installed_at": "2026-01-01T00:00:00Z",
+    }
+    (tmp_path / "setup-state.json").write_text(
+        json.dumps(flag), encoding="utf-8"
+    )
+    return venv_dir
+```
+
+**Apply the fixture in `tests/test_dashboard_regen_hook.py`**: every test that invokes `_run_hook` with `autoregen=True` and expects regen logic to run must add `valid_setup_state` to its parameter list. The fixture's `monkeypatch.setenv("CLAUDE_PLUGIN_DATA", ...)` runs automatically.
+
+Example patch for the tests in that file that exercise the regen path (version-check, regen success, regen failure):
+
+```python
+# Before (no Pattern W awareness):
+def test_autoregen_regen_success(tmp_path: Path) -> None:
+    env = _make_env(tmp_path, autoregen=True)
+    result = _run_hook(env, autoregen_arg="true")
+    ...
+
+# After (VALID guard satisfied):
+def test_autoregen_regen_success(tmp_path: Path, valid_setup_state: Path) -> None:
+    # valid_setup_state already set CLAUDE_PLUGIN_DATA; _make_env picks it up.
+    env = _make_env(tmp_path, autoregen=True)
+    result = _run_hook(env, autoregen_arg="true")
+    ...
+```
+
+**Apply the same pattern in `tests/test_skill_tracker_hook.py`**: the subprocess-based tests that assert tracking files are written need `valid_setup_state` in their parameter list. The `CLAUDE_PLUGIN_DATA` env var is already forwarded through `os.environ.copy()` inside `_run_hook`, so no other change is required.
+
+Tests that exercise non-regen or non-tracking paths (e.g., `autoregen=False` exit-0 check, `_get_allowlist` unit tests via `_load_module()`) do not need the fixture — the guard short-circuiting is the correct behaviour for those scenarios.
+
+- [ ] **Step 9: Re-run the existing tests to confirm they pass**
 
 ```bash
-git -C "I:/other/claude-prospector/.worktrees/pattern-w-implementation" add hooks/skill-tracker.py hooks/dashboard-regen.py tests/unit/test_skill_tracker_guard.py tests/unit/test_dashboard_regen_guard.py
+"./.venv/Scripts/python.exe" -m pytest tests/test_skill_tracker_hook.py tests/test_dashboard_regen_hook.py -v
+```
+
+Expected: All tests pass.
+
+- [ ] **Step 11: Commit**
+
+```bash
+git -C "I:/other/claude-prospector/.worktrees/pattern-w-implementation" add hooks/skill-tracker.py hooks/dashboard-regen.py tests/unit/test_skill_tracker_guard.py tests/unit/test_dashboard_regen_guard.py tests/conftest.py tests/test_skill_tracker_hook.py tests/test_dashboard_regen_hook.py
 git -C "I:/other/claude-prospector/.worktrees/pattern-w-implementation" commit -m "feat: add Pattern W guards to skill-tracker and dashboard-regen hooks (refs #107)"
 ```
 
@@ -2162,7 +2308,9 @@ There are no TDD test steps for this task — it is configuration and documentat
 
 - [ ] **Step 1: Add `skill-smoke-{ubuntu,windows}` jobs to `.github/workflows/ci.yml`**
 
-Append these two jobs to the existing `ci.yml` (after the `test:` job, before the closing of the YAML document). The new jobs do not depend on `test:` — they are independent parallel jobs:
+Append these two jobs to the existing `ci.yml` (after the `test:` job, before the closing of the YAML document). The new jobs do not depend on `test:` — they are independent parallel jobs.
+
+**Install step:** the `uv pip install --system -e ".[dev]"` line below mirrors the existing `test:` job in `ci.yml` exactly (verified against `.github/workflows/ci.yml` at commit `3caf9a4`). Use the same form — do not substitute `pip install` or `uv sync`.
 
 ```yaml
   skill-smoke-ubuntu:
@@ -2445,3 +2593,21 @@ Function names used across tasks:
 | `get_venv_python()` (pipeline) | Task 2 (`setup_pipeline.py`) | Task 2 tests |
 
 All consistent. The sync test's `STEP_FUNCTION_MAP` keys match the SKILL.md `## Step N:` headings exactly.
+
+---
+
+## Reviewer Findings Applied (2026-05-18)
+
+The following findings from project-review were applied as targeted edits. Original plan structure and task ordering are preserved.
+
+| Finding | Location Patched | Resolution |
+|---------|-----------------|------------|
+| BLOCKING-1: venv-python assertion missing in `test_valid_state_uses_venv_python_for_regen` | Task 4, `test_dashboard_regen_guard.py` block | `_make_fake_venv_python_success` shim now writes `sys.executable` to a sentinel file via `CLAUDE_PROSPECTOR_SENTINEL_FILE` env var; test asserts sentinel path equals expected fake-venv python absolute path |
+| BLOCKING-2: `_venv_python` scope ambiguous across 4b/4c/4d | Task 4, steps 4b–4d | `_venv_python` is now pre-computed in step 4b immediately after the guard; steps 4c and 4d reference the already-bound name with no re-access of `_state.flag` |
+| CONCERN-3: existing hook tests lose coverage silently | Task 4, new steps 8–10 | Added step 8 (shared `valid_setup_state` fixture extracted to `tests/conftest.py`) and step 9 (re-run existing tests); step numbering shifted, commit is now step 11 |
+| CONCERN-4: `test_setup_skill.py` import style inconsistency | Task 2, step 6 import block | Changed `from tests.integration import setup_pipeline` to `sys.path.insert` + `from integration import setup_pipeline` pattern, matching sibling tests |
+| CONCERN-5: `test_valid_state_allows_tracking` brittle vs allowlist | Task 4, `test_skill_tracker_guard.py` block | Added docstring clarifying that `tool_name="Skill"` path never consults `_get_allowlist()` — the allowlist concern does not apply here; test is not brittle |
+| CONCERN-6: `_get_plugin_root()` docstring off-by-one | Task 1, `setup_state.py` block | Docstring updated to "three levels up" with explicit chain: `setup_state.py → lib/ → hooks/ → <root>/` |
+| CONCERN-7: `PYTHONPATH` redundancy in `test_check_prospector_setup.py::_make_env` | Task 3, `test_check_prospector_setup.py` block | Removed `PYTHONPATH` manipulation; added comment explaining why (hook's own `sys.path.insert` is the production mechanism and should be tested as such) |
+| NIT-8: `status` field should be `Literal[...]` not bare `str` | Task 1, `SetupStateResult` dataclass | Changed `status: str` to `status: Literal["VALID", "MISSING", "STALE", "BROKEN"]`; added `Literal` to `from typing import` line |
+| NIT-9: CI smoke jobs `--system` flag inconsistency | Task 5, step 1 | Verified against `ci.yml` at `3caf9a4`: existing `test:` job uses `uv pip install --system -e ".[dev]"` — plan already matches; added inline note confirming the match |
