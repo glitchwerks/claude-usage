@@ -12,7 +12,7 @@ from jinja2 import Environment, FileSystemLoader
 
 from claude_prospector.aggregator import AggregateResult
 
-_TEMPLATE_DIR = Path(__file__).resolve().parent.parent / "templates"
+_TEMPLATE_DIR = Path(__file__).resolve().parent / "templates"
 
 
 def render(

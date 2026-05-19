@@ -18,7 +18,11 @@ dev = [
 ]
 
 [tool.setuptools.packages.find]
+where = ["src"]
 include = ["claude_prospector*"]
+
+[tool.setuptools.package-data]
+claude_prospector = ["templates/*.html"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -24,7 +24,7 @@ Thumbs.db
 
 # Generated reports
 *.html
-!templates/*.html
+!src/claude_prospector/templates/*.html
 
 # Claude Code
 .claude/
