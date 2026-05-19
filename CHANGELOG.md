@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.8.0] - 2026-05-19
 
 ### Added
 
@@ -22,13 +22,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Plugin and PyPI `description:` fields reframed from "token usage
   analyzer" to "Claude Code efficiency and hygiene toolkit" to reflect
   the broader scope (cost + config-hygiene angles). README "Why" section
-  updated with a per-skill responsibility table. (#123)
+  updated with a per-skill responsibility table. Plugin keywords
+  expanded with `audit` + `config-hygiene`. (#123)
 
-### Notes
+### Upgrade notes
 
-- The user-global `~/.claude/skills/claude-audit/` directory should be
-  removed at release time, to avoid duplicate-activation noise. Do not
-  delete the user-global copy until this version is published. (#123)
+- If you had `~/.claude/skills/claude-audit/` as a user-global skill
+  before upgrading, remove it after this version installs. Keeping both
+  copies causes duplicate activation on the same trigger phrases.
 
 ## [0.7.1] - 2026-05-18
 
