@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.1] - 2026-05-18
+
+### Changed
+
+- Rewrote `description:` frontmatter for both plugin skills
+  (`usage-analysis`, `usage-dashboard`) to use "Use when..." activation
+  framing with explicit "Do NOT use ... (use other skill instead)"
+  boundaries. Trigger phrases now carry `Claude` / `prospector` / `token`
+  disambiguators to prevent false positives in cloud-billing or
+  API-quota contexts. (#119, closes #101)
+- README audited for correctness against v0.7.0 code and restructured
+  into 12 sections; "Why" section rewritten to acknowledge Claude
+  Code's built-in `/usage` command and clarify what `claude-prospector`
+  adds on top. (#118)
+
+### Removed
+
+- Empty `commands/` folder (deprecated surface — skills replaced
+  commands in v0.6.0). (#117)
+
 ## [0.7.0] - 2026-05-18
 
 ### Added
