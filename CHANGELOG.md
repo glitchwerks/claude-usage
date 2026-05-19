@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `claude-audit` skill: audits your effective Claude Code configuration
+  (custom + plugin-provided agents and skills) and produces a structured
+  overlap / conflict report with keep / modify / drop recommendations
+  scoped to the project's stated objectives. Activates via
+  `/claude-prospector:claude-audit` or natural-language phrases like
+  "audit my claude config", "find overlap in my agents". Read-only —
+  produces a report only; does not modify any files. (#123)
+
+### Changed
+
+- Plugin and PyPI `description:` fields reframed from "token usage
+  analyzer" to "Claude Code efficiency and hygiene toolkit" to reflect
+  the broader scope (cost + config-hygiene angles). README "Why" section
+  updated with a per-skill responsibility table. (#123)
+
+### Notes
+
+- The user-global `~/.claude/skills/claude-audit/` directory should be
+  removed at release time, to avoid duplicate-activation noise. Do not
+  delete the user-global copy until this version is published. (#123)
+
 ## [0.7.1] - 2026-05-18
 
 ### Changed
