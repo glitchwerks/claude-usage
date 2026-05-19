@@ -1,7 +1,7 @@
 {
   "name": "claude-prospector",
   "version": "0.7.1",
-  "description": "Claude Code token usage analyzer with optimization recommendations. Surfaces what's eating your budget across the 5h / 7d / Sonnet-7d billing windows, with per-model and nested per-agent attribution and skill adoption tracking. Ships both an interactive dashboard and a conversational analysis skill.",
+  "description": "Claude Code efficiency and hygiene toolkit. Surfaces token spend across the 5h / 7d / Sonnet-7d billing windows with per-model / per-agent / per-skill attribution, and audits your effective Claude Code configuration (custom + plugin agents and skills) for overlap and conflicts. Ships an interactive dashboard, a conversational usage-analysis skill, and a structured config-audit skill.",
   "author": {
     "name": "Christopher Beaulieu",
     "email": "cmb_dev@outlook.com"
@@ -9,7 +9,7 @@
   "license": "MIT",
   "homepage": "https://github.com/glitchwerks/claude-prospector",
   "repository": "https://github.com/glitchwerks/claude-prospector",
-  "keywords": ["claude-code", "usage", "tokens", "billing", "dashboard", "observability"],
+  "keywords": ["claude-code", "usage", "tokens", "billing", "dashboard", "observability", "audit", "config-hygiene"],
   "userConfig": {
     "autoregen": {
       "type": "boolean",

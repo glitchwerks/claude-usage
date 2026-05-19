@@ -1,12 +1,20 @@
 # claude-prospector
 
-Token usage analyzer for Claude Code that surfaces where your budget is going across all three billing windows, with per-model and per-agent attribution and concrete optimization recommendations.
+Claude Code efficiency and hygiene toolkit. Surfaces token spend across the three billing windows with per-model / per-agent / per-skill attribution, and audits your effective Claude Code configuration for agent and skill overlap.
 
 ## Why
 
-Claude Code's built-in `/usage` shows current-session token totals and — for Max/Pro subscribers — plan-usage bars on the same screen. It doesn't surface multi-day history, per-agent attribution with sub-agent nesting, per-skill invocation counts, or per-project breakdowns, and there's no way to ask "where are my Sonnet-7d tokens going this week?" from inside the session.
+`claude-prospector` bundles a set of skills that target distinct angles of "is my Claude Code setup healthy?":
 
-`claude-prospector` reads Claude Code's local JSONL session files across all your sessions and generates a dashboard that breaks down where your tokens are going — by model, agent (with sub-agent nesting), skill, and project — across all three billing windows (5h rolling, 7d rolling, Sonnet-only 7d).
+| Skill | Angle |
+|---|---|
+| `usage-analysis` | where your tokens are going |
+| `usage-dashboard` | regenerate the cost dashboard surface |
+| `claude-audit` | where your config has agent / skill overlap or bloat |
+
+Claude Code's built-in `/usage` shows current-session token totals and — for Max/Pro subscribers — plan-usage bars on the same screen. It doesn't surface multi-day history, per-agent attribution with sub-agent nesting, per-skill invocation counts, or per-project breakdowns, and there's no way to ask "where are my Sonnet-7d tokens going this week?" from inside the session. There's also no built-in way to detect when two installed plugins ship overlapping `code-reviewer` agents or near-duplicate skills.
+
+`claude-prospector` reads Claude Code's local JSONL session files to break tokens down by model, agent (with sub-agent nesting), skill, and project across all three billing windows (5h rolling, 7d rolling, Sonnet-only 7d), and inventories your custom + plugin-provided agents and skills to produce a structured overlap / conflict report with keep / modify / drop recommendations.
 
 ## Install
 
@@ -63,6 +71,18 @@ The generated HTML dashboard includes:
 - **Skill usage** — invocation counts per skill
 - **Project breakdown** — tokens per project
 - **Session drill-down** — click a day to see individual sessions with agents, tokens, and model split
+
+### `claude-audit` skill
+
+Audits your project's effective Claude Code configuration — custom and plugin-provided agents and skills together — and produces a structured overlap / conflict report with keep / modify / drop recommendations scoped to the project's stated objectives. Triggered by `/claude-prospector:claude-audit` or natural-language phrases such as:
+
+- "audit my claude config"
+- "find overlap in my agents"
+- "check for skill conflicts"
+- "are any of my agents duplicates"
+- "what's redundant in my setup"
+
+The skill is read-only — it does not modify any files. All recommendations are presented for your review.
 
 ### `setup-prospector` skill
 
