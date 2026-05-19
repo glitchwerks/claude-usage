@@ -18,6 +18,7 @@ dev = [
 ]
 
 [tool.setuptools.packages.find]
+where = ["src"]
 include = ["claude_prospector*"]
 
 [tool.pytest.ini_options]
