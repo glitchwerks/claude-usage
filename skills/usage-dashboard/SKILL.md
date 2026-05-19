@@ -1,12 +1,15 @@
 ---
 name: usage-dashboard
 description: >
-  Regenerates the Claude Code token usage HTML dashboard for the
-  `claude-prospector` plugin. Bare regeneration surface — writes the file and
-  reports the path; does not interpret the data.
-  Trigger phrases: "regenerate the dashboard", "rebuild my usage dashboard",
-  "refresh the usage dashboard", "regen the dashboard",
-  "regenerate the usage dashboard".
+  Use when the user explicitly asks to regenerate, rebuild, or refresh the
+  `claude-prospector` token-usage dashboard with no interpretive question
+  attached — runs `python -m claude_prospector dashboard`, writes the HTML
+  file, and reports the output path. Do NOT use when the user is asking what
+  the data means, where their budget stands, or what to change (use
+  `usage-analysis` instead — it regenerates as part of answering).
+  Trigger phrases: "regenerate the usage dashboard", "rebuild my
+  claude-prospector dashboard", "refresh the token dashboard", "regen the
+  prospector dashboard".
 ---
 
 ## Prerequisites

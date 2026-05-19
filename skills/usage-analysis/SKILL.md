@@ -1,10 +1,17 @@
 ---
 name: usage-analysis
 description: >
-  Analyzes Claude Code token usage and provides optimization recommendations.
-  Trigger phrases: "am I close to my limit", "how much Sonnet am I using",
-  "token budget", "where are my tokens going", "what's eating my budget",
-  "which agent uses the most".
+  Use when the user asks an interpretive question about their Claude Code
+  token spend — budget status across the 5h / 7d / Sonnet-7d billing buckets,
+  which agents/skills/projects are eating their budget, model-distribution
+  drift, or what to change to reduce spend. Regenerates the
+  `claude-prospector` dashboard as needed and reads the embedded data to
+  answer. Do NOT use for bare "regenerate the dashboard" requests with no
+  question attached (use `usage-dashboard` instead).
+  Trigger phrases: "am I close to my Claude limit", "how much Sonnet am I
+  using", "where are my Claude tokens going", "what's eating my Claude
+  budget", "which agent uses the most tokens", "why is my Claude spend so
+  high".
 ---
 
 ## Prerequisites
