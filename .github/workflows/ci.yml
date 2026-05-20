@@ -20,12 +20,12 @@ jobs:
       - uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
-      - name: Install dev extras
-        run: uv pip install --system -e ".[dev]"
+      - name: Install dev dependencies
+        run: uv sync --group dev
       - name: Ruff check
-        run: ruff check .
+        run: uv run ruff check .
       - name: Ruff format check
-        run: ruff format --check .
+        run: uv run ruff format --check .
 
   test:
     name: Test
@@ -42,10 +42,10 @@ jobs:
       - uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
-      - name: Install dev extras
-        run: uv pip install --system -e ".[dev]"
+      - name: Install dev dependencies
+        run: uv sync --group dev
       - name: Pytest
-        run: pytest
+        run: uv run pytest
 
   skill-smoke-ubuntu:
     name: Skill Smoke (Ubuntu)
@@ -58,12 +58,12 @@ jobs:
       - uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
-      - name: Install dev extras
-        run: uv pip install --system -e ".[dev]"
+      - name: Install dev dependencies
+        run: uv sync --group dev
       - name: Skill smoke test
         env:
           CLAUDE_PROSPECTOR_PIP_SPEC: ${{ github.workspace }}
-        run: pytest tests/integration/test_setup_skill.py -v
+        run: uv run pytest tests/integration/test_setup_skill.py -v
 
   skill-smoke-windows:
     name: Skill Smoke (Windows)
@@ -76,9 +76,9 @@ jobs:
       - uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
-      - name: Install dev extras
-        run: uv pip install --system -e ".[dev]"
+      - name: Install dev dependencies
+        run: uv sync --group dev
       - name: Skill smoke test
         env:
           CLAUDE_PROSPECTOR_PIP_SPEC: ${{ github.workspace }}
-        run: pytest tests/integration/test_setup_skill.py -v
+        run: uv run pytest tests/integration/test_setup_skill.py -v
