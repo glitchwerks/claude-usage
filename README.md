@@ -329,6 +329,10 @@ Both jobs must be green before a PR can merge.
 
 Issue #67 tracks making `claude plugin update` handle the Python venv refresh automatically, so that `/setup-prospector` would not need to be run manually after updates. Until that lands, re-run `/setup-prospector` after each plugin update when prompted by the SessionStart banner.
 
+## Contributing
+
+To release a new version, see [docs/release-process.md](docs/release-process.md).
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
