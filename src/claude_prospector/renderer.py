@@ -8,11 +8,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 
-from jinja2 import Environment, FileSystemLoader
+from jinja2 import Environment, PackageLoader
 
 from claude_prospector.aggregator import AggregateResult
-
-_TEMPLATE_DIR = Path(__file__).resolve().parent / "templates"
 
 
 def render(
@@ -23,17 +21,26 @@ def render(
 ) -> Path:
     """Render the dashboard HTML from aggregated data.
 
+    Uses ``jinja2.PackageLoader`` so the template resolves via Python's
+    package resource system (``importlib.resources``) rather than a
+    ``Path(__file__)``-relative filesystem lookup.  This makes the loader
+    work identically for both editable source-tree installs and built
+    wheel installs, fixing the ``TemplateNotFound`` crash reported in
+    issue #138.
+
     Args:
         result: Aggregated usage data.
-        output_path: Where to write the HTML. If None, writes to a temp file.
+        output_path: Where to write the HTML. If None, writes to a temp
+            file.
         open_browser: Whether to open the result in the default browser.
-        limits: Optional budget limits: {limit_5h, limit_7d, limit_sonnet_7d}.
+        limits: Optional budget limits:
+            {limit_5h, limit_7d, limit_sonnet_7d}.
 
     Returns:
         Path to the generated HTML file.
     """
     env = Environment(
-        loader=FileSystemLoader(str(_TEMPLATE_DIR)),
+        loader=PackageLoader("claude_prospector", "templates"),
         autoescape=True,
     )
     template = env.get_template("dashboard.html")
