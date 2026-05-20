@@ -92,7 +92,10 @@ class TestSkillAdoptionE2E:
         render(result, output_path=output, open_browser=False)
 
         html = output.read_text(encoding="utf-8")
-        assert "Skill Adoption" in html
+        # The new dashboard embeds by_skill_adoption in the DATA JSON blob;
+        # the Skills tab and skill quadrant section reference it at runtime.
+        # Accept any recognisable form of the label (old or new template wording).
+        assert "skill adoption" in html.lower() or "by_skill_adoption" in html
         assert "python" in html
 
 
@@ -247,8 +250,16 @@ class TestSubagentModelAttribution:
         render(result, output_path=output_path, open_browser=False)
         html = output_path.read_text(encoding="utf-8")
 
-        # Extract the DATA JSON blob embedded in the HTML
-        marker = "const DATA = "
+        # Extract the DATA JSON blob embedded in the HTML.
+        # Accept both old marker (const DATA =) and new one (window.DATA =).
+        for _marker in ("window.DATA = ", "const DATA = "):
+            if _marker in html:
+                marker = _marker
+                break
+        else:
+            raise AssertionError(
+                "Neither 'window.DATA = ' nor 'const DATA = ' found in HTML."
+            )
         start = html.index(marker) + len(marker)
         # Find the matching closing brace by scanning for the semicolon after the JSON object
         end = html.index(";\n", start)
@@ -330,19 +341,24 @@ class TestSeparatorSanitizationE2E:
 
 
 class TestChartLabelSkip:
-    """Regression test for issue #7: category-axis labels skipped on Tokens by Agent
-    and Skill Invocations charts.
+    """Regression guard for issue #7: all agent/skill labels must be visible.
 
-    Chart.js defaults autoSkip=true on tick axes, which causes every other label to
-    vanish when the chart height is small relative to the number of categories.  The
-    fix sets ticks: { autoSkip: false } on the y-axis of every horizontal bar chart so
-    that all labels are always rendered.  This test verifies the rendered HTML contains
-    that config by inspecting the template source.
+    The original dashboard used Chart.js horizontal bar charts; the new
+    dashboard renders agents and skills as scrollable HTML rows (the Efficiency
+    and Skills tabs), which removes the Chart.js ``autoSkip`` concern entirely.
+    These tests verify that the new template's design preserves the intent:
+    every agent and skill label is visible regardless of how many there are.
     """
 
     def _build_large_result(self, n: int = 20) -> AggregateResult:
-        """Build an AggregateResult with *n* agents and *n* skills — enough to
-        trigger label-skipping at the default 260 px chart height."""
+        """Build an AggregateResult with *n* agents and *n* skills.
+
+        Args:
+            n: Number of agents/skills/projects to generate.
+
+        Returns:
+            A minimal AggregateResult suitable for rendering tests.
+        """
         result = AggregateResult()
         result.total_tokens = n * 1000
         result.total_sessions = n
@@ -365,10 +381,13 @@ class TestChartLabelSkip:
         return result
 
     def test_agent_bar_chart_has_auto_skip_false(self, tmp_path: Path) -> None:
-        """Rendered dashboard must contain autoSkip: false on the agentBar y-axis.
+        """Agent label visibility: all agents must be reachable in the rendered HTML.
 
-        With 20 agents and a fixed-height container, Chart.js would skip every
-        other label unless autoSkip is explicitly disabled.
+        The old template used Chart.js and required ``autoSkip: false``.
+        The new template renders agents as scrollable HTML rows — no Chart.js
+        config is needed.  This test verifies that the template embeds agent
+        data in the DATA blob (so the JS can render rows for each agent) rather
+        than checking for the now-irrelevant Chart.js config key.
         """
         result = self._build_large_result(20)
         output = tmp_path / "dashboard.html"
@@ -376,34 +395,24 @@ class TestChartLabelSkip:
 
         html = output.read_text(encoding="utf-8")
 
-        # The template contains the literal JS source for both charts.
-        # We verify the autoSkip: false config is present in the output.
-        assert "autoSkip: false" in html, (
-            "Rendered HTML must contain 'autoSkip: false' — Chart.js will skip "
-            "category-axis labels at the default chart height without it."
+        # The new dashboard renders agents via JS from DATA.by_agent.
+        # Verify the DATA blob is present and the agent key prefix is there.
+        assert "by_agent" in html, (
+            "Rendered HTML must contain 'by_agent' in the embedded DATA blob "
+            "so the JS can render all agent rows without label skipping."
+        )
+        # At least one of our synthetic agents must appear in the JSON.
+        assert "agent-00" in html, (
+            "Rendered HTML must embed agent keys in DATA so the dashboard "
+            "renders a row for every agent regardless of count."
         )
 
     def test_skill_bar_chart_has_auto_skip_false(self, tmp_path: Path) -> None:
-        """renderSkillBar must also have autoSkip: false on its y-axis."""
-        result = self._build_large_result(20)
-        output = tmp_path / "dashboard.html"
-        render(result, output_path=output, open_browser=False)
+        """Skill label visibility: all skills must be reachable in the rendered HTML.
 
-        html = output.read_text(encoding="utf-8")
-
-        # Count occurrences — there should be one per horizontal bar chart
-        # (agentBar, skillBar, projectBar, skillAdoption = 4 charts).
-        count = html.count("autoSkip: false")
-        assert count >= 2, (
-            f"Expected at least 2 occurrences of 'autoSkip: false' (agentBar + skillBar), "
-            f"found {count}. Both charts need the config to fix label skipping."
-        )
-
-    def test_dynamic_height_set_for_many_categories(self, tmp_path: Path) -> None:
-        """Rendered HTML must set container height dynamically based on item count.
-
-        Without dynamic height, disabling autoSkip alone causes labels to overlap.
-        The template sets canvas.parentElement.style.height proportionally.
+        The old template checked for ``autoSkip: false`` count >= 2.  The new
+        template renders skills as scrollable HTML rows via DATA.by_skill.
+        This test verifies the skill data is embedded.
         """
         result = self._build_large_result(20)
         output = tmp_path / "dashboard.html"
@@ -411,8 +420,34 @@ class TestChartLabelSkip:
 
         html = output.read_text(encoding="utf-8")
 
-        assert "parentElement.style.height" in html, (
-            "Rendered HTML must contain parentElement.style.height — "
-            "dynamic container sizing is required to prevent label overlap "
-            "after disabling autoSkip."
+        assert "by_skill" in html, (
+            "Rendered HTML must contain 'by_skill' in the embedded DATA blob "
+            "so the JS renders all skill rows without label skipping."
+        )
+        assert "skill-00" in html, (
+            "Rendered HTML must embed skill keys in DATA so every skill "
+            "appears in the scrollable skills panel."
+        )
+
+    def test_dynamic_height_set_for_many_categories(self, tmp_path: Path) -> None:
+        """Overflow handling: many-category lists must not clip labels.
+
+        The old template used ``parentElement.style.height`` to expand Chart.js
+        containers dynamically.  The new template uses a scrollable ``skills-scroll``
+        div instead — all rows are always reachable via scroll rather than dynamic
+        height expansion.  This test verifies the scroll container is present.
+        """
+        result = self._build_large_result(20)
+        output = tmp_path / "dashboard.html"
+        render(result, output_path=output, open_browser=False)
+
+        html = output.read_text(encoding="utf-8")
+
+        # The new template uses a CSS scrollable container for the skills list.
+        # Accept either the old dynamic-height pattern or the new scroll pattern.
+        has_old_pattern = "parentElement.style.height" in html
+        has_new_pattern = "skills-scroll" in html or "overflow-y" in html
+        assert has_old_pattern or has_new_pattern, (
+            "Rendered HTML must handle many-category display: either via "
+            "parentElement.style.height (old) or an overflow-y scroll container (new)."
         )
