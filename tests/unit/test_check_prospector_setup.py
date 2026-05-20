@@ -190,32 +190,25 @@ def test_broken_flag_emits_broken_banner(tmp_path: Path) -> None:
 def test_valid_flag_import_ok_no_banner(tmp_path: Path) -> None:
     """VALID flag + import probe succeeds -> no banner (empty additionalContext).
 
-    On Windows a text file named python.exe cannot be executed directly by
-    the OS, so we use the real Python interpreter as the venv python and drop
-    a lightweight claude_prospector stub into a temporary site-packages dir.
-    PYTHONPATH is set so that `import claude_prospector` resolves to the stub.
+    Resolves the venv directory without copying the interpreter binary.
+    Copying sys.executable is fragile on Windows when pytest runs under a
+    uv-managed venv: the venv launcher (Scripts/python.exe) reads pyvenv.cfg
+    from its own directory to locate python3XX.dll, and a bare copy in a
+    temp directory without that pyvenv.cfg fails to start.
+
+    Strategy (mirrors conftest.py valid_setup_state fixture):
+    1. If sys.executable is inside a venv's Scripts/bin dir, use that venv
+       root directly — get_venv_python(venv_root) returns sys.executable,
+       which is a working interpreter.  Inject PYTHONPATH to a stub so the
+       import probe succeeds without touching the real installed package.
+    2. Otherwise fall back to symlink (POSIX) or copy (Windows last-resort)
+       into a minimal fake venv layout.
     """
-    # Point the flag at the real Python interpreter so the OS can run it.
-    # Place it at the expected venv path for the current platform.
-    if platform.system() == "Windows":
-        venv_python_dir = tmp_path / "venv" / "Scripts"
-        venv_python_dir.mkdir(parents=True)
-        venv_python = venv_python_dir / "python.exe"
-    else:
-        venv_python_dir = tmp_path / "venv" / "bin"
-        venv_python_dir.mkdir(parents=True)
-        venv_python = venv_python_dir / "python"
+    _is_windows = platform.system() == "Windows"
+    _scripts_name = "Scripts" if _is_windows else "bin"
+    _python_name = "python.exe" if _is_windows else "python"
 
-    # Symlink (or copy on Windows) the real interpreter into the fake venv.
-    real_python = Path(sys.executable)
-    try:
-        venv_python.symlink_to(real_python)
-    except (OSError, NotImplementedError):
-        # Windows may require elevated privileges for symlinks; fall back to
-        # a hard copy so the path exists and is executable.
-        import shutil
-
-        shutil.copy2(real_python, venv_python)
+    exe = Path(sys.executable)
 
     # Create a minimal claude_prospector stub so `import claude_prospector`
     # succeeds in the probe without touching the real installed package.
@@ -226,6 +219,44 @@ def test_valid_flag_import_ok_no_banner(tmp_path: Path) -> None:
         '"""Stub for test import probe."""\n', encoding="utf-8"
     )
 
+    # Strategy 1: sys.executable is already inside a venv's Scripts/bin dir.
+    # Use the real venv root so we never need to copy the interpreter binary.
+    if exe.parent.name.lower() == _scripts_name.lower():
+        candidate = exe.parent.parent
+        if (candidate / _scripts_name / _python_name).exists():
+            _write_flag(
+                tmp_path,
+                {
+                    "version": _CURRENT_VERSION,
+                    "venv_path": str(candidate),
+                    "interpreter": "python3",
+                    "installed_at": "2026-01-01T00:00:00Z",
+                },
+            )
+            output = _run_hook(tmp_path, extra_env={"PYTHONPATH": str(stub_site)})
+            context = output.get("additionalContext", "")
+            assert not context, f"Expected no banner on VALID+OK, got: {context!r}"
+            return
+
+    # Strategy 2 (fallback): build a minimal fake venv layout.
+    # Symlink on POSIX (no elevation needed); copy on Windows as last resort.
+    if _is_windows:
+        venv_python_dir = tmp_path / "venv" / "Scripts"
+    else:
+        venv_python_dir = tmp_path / "venv" / "bin"
+    venv_python_dir.mkdir(parents=True)
+    venv_python = venv_python_dir / _python_name
+
+    try:
+        venv_python.symlink_to(exe)
+    except (OSError, NotImplementedError):
+        import shutil
+
+        shutil.copy2(exe, venv_python)
+
+    if not _is_windows:
+        venv_python.chmod(0o755)
+
     _write_flag(
         tmp_path,
         {
@@ -235,7 +266,7 @@ def test_valid_flag_import_ok_no_banner(tmp_path: Path) -> None:
             "installed_at": "2026-01-01T00:00:00Z",
         },
     )
-    # Inject PYTHONPATH so the real venv python can import the stub.
+    # Inject PYTHONPATH so the venv python can import the stub.
     output = _run_hook(tmp_path, extra_env={"PYTHONPATH": str(stub_site)})
     context = output.get("additionalContext", "")
     assert not context, f"Expected no banner on VALID+OK, got: {context!r}"
