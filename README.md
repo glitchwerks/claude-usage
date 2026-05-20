@@ -295,10 +295,12 @@ Users upgrading from v0.4.0 get a one-time automatic migration: on the first ses
 ```bash
 git clone https://github.com/glitchwerks/claude-prospector.git
 cd claude-prospector
-uv pip install -e ".[dev]"   # installs runtime + ruff + pytest
+uv sync   # installs runtime + ruff + pytest; creates .venv with Python 3.12
 ```
 
-Requires Python 3.10+.
+Requires Python 3.12 (pinned via `.python-version`).
+
+If `uv sync` creates the venv with the wrong interpreter (e.g. you have a newer Python on PATH), delete `.venv/` and re-run `uv sync`. The `.python-version` file pins Python 3.12 and `uv` will locate or download it automatically.
 
 ### Testing
 
