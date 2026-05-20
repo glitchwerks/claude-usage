@@ -73,28 +73,35 @@ class TestResponsiveness:
 
         A fixed ``repeat(3, 1fr)`` column definition will not wrap on narrow
         screens. The fix uses ``repeat(auto-fill, minmax(...))`` or media
-        queries to allow the grid to collapse.
+        queries to allow the grid to collapse.  The new dashboard uses
+        ``.budgets`` for the budget hero row; either the class name or
+        ``auto-fill``/``auto-fit`` satisfies the intent.
         """
         html = _render_html(tmp_path)
         has_autofill = "auto-fill" in html or "auto-fit" in html
-        has_gauge_media = "@media" in html and ".gauges" in html
+        # Accept either old .gauges name or new .budgets name with a @media.
+        has_gauge_media = "@media" in html and (".gauges" in html or ".budgets" in html)
         assert has_autofill or has_gauge_media, (
-            "Gauge grid must use auto-fill/auto-fit or a media query so it "
-            "collapses from 3 columns to fewer on narrow screens."
+            "Gauge/budget grid must use auto-fill/auto-fit or a media query so "
+            "it collapses from 3 columns to fewer on narrow screens."
         )
 
     def test_grid2_collapses_on_narrow_screens(self, tmp_path: Path) -> None:
         """Two-column card sections must collapse to one column via @media.
 
-        The .grid-2 class currently uses a fixed two-column layout. On
-        screens below ~800 px it must become a single column.
+        The dashboard must define breakpoints so multi-column layouts
+        collapse on narrow screens.  The old template used ``.grid-2``;
+        the new template uses ``.row`` (``grid-template-columns: 2fr 1fr``)
+        with ``@media (max-width: 1000px) { ... grid-template-columns: 1fr }``.
+        We accept any media query that targets a two-column layout class.
         """
         html = _render_html(tmp_path)
-        # The template must define a breakpoint that makes .grid-2
-        # single-column. We accept any media query that references grid-2.
-        assert "@media" in html and "grid-2" in html, (
-            "A @media query targeting .grid-2 must be present to collapse "
-            "the two-column layout on narrow screens."
+        has_any_two_col_media = "@media" in html and (
+            "grid-2" in html or ".row" in html
+        )
+        assert has_any_two_col_media, (
+            "A @media query targeting a two-column layout class (.grid-2 or "
+            ".row) must be present so the layout collapses on narrow screens."
         )
 
     def test_session_list_responsive(self, tmp_path: Path) -> None:
@@ -202,9 +209,17 @@ def test_path_keys_render_through(tmp_path: Path) -> None:
     # --- Assertion 2: JSON payload round-trip ---
     # Parse the embedded DATA block to confirm the key decodes back to the
     # original Python string (U+2192 codepoint, not a literal backslash-u).
-    # The template renders: const DATA = {{ data_json | safe }};
+    # Accept both old marker (const DATA =) and new one (window.DATA =).
     # json.JSONDecoder.raw_decode handles \uXXXX escapes transparently.
-    data_line_marker = "const DATA = "
+    for _marker in ("window.DATA = ", "const DATA = "):
+        if _marker in html:
+            data_line_marker = _marker
+            break
+    else:
+        raise AssertionError(
+            "Neither 'window.DATA = ' nor 'const DATA = ' found in "
+            "rendered HTML; the data embedding contract has changed."
+        )
     data_start = html.index(data_line_marker) + len(data_line_marker)
     decoder = json.JSONDecoder()
     data_obj, _ = decoder.raw_decode(html, data_start)
@@ -254,7 +269,16 @@ def test_real_data_depth3_renders_correct_by_agent_values(
 
     # Extract the embedded DATA JSON payload the same way test_path_keys_render_through
     # does — raw_decode handles the → JSON-escape transparently.
-    data_line_marker = "const DATA = "
+    # Accept both old marker (const DATA =) and new one (window.DATA =).
+    for _marker in ("window.DATA = ", "const DATA = "):
+        if _marker in html:
+            data_line_marker = _marker
+            break
+    else:
+        raise AssertionError(
+            "Neither 'window.DATA = ' nor 'const DATA = ' found in "
+            "rendered HTML; the data embedding contract has changed."
+        )
     data_start = html.index(data_line_marker) + len(data_line_marker)
     decoder = json.JSONDecoder()
     data_obj, _ = decoder.raw_decode(html, data_start)

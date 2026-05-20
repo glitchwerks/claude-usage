@@ -7,900 +7,1590 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { background: #0d1117; }
   body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    background: #0d1117;
+    font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     color: #c9d1d9;
-    padding: clamp(12px, 3vw, 24px);
-    min-width: 0;
+    font-size: 13px;
+    line-height: 1.4;
+    min-height: 100vh;
   }
-  /* Constrain ultra-wide layouts */
-  .page-inner {
-    max-width: 1600px;
-    margin: 0 auto;
-  }
-  h1 { font-size: clamp(1.2rem, 3vw, 1.6rem); color: #f0f6fc; margin-bottom: 4px; }
+  ::selection { background: rgba(139,92,246,0.35); color: #f0f6fc; }
+  .stage { max-width: 1600px; margin: 0 auto; padding: 24px; }
 
-  /* Header */
-  .header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 24px;
-    border-bottom: 1px solid #21262d;
-    padding-bottom: 16px;
-    gap: 12px;
-    flex-wrap: wrap;
-  }
-  .header-left { display: flex; flex-direction: column; }
-  .header-subtitle { color: #8b949e; font-size: 0.85rem; }
-  .controls { display: flex; gap: 8px; align-items: center; flex-shrink: 0; }
-  .controls select, .controls input {
-    background: #161b22;
-    border: 1px solid #30363d;
-    color: #c9d1d9;
-    padding: 6px 10px;
-    border-radius: 6px;
-    font-size: 0.85rem;
-  }
-  .controls label { font-size: 0.8rem; color: #8b949e; }
-
-  /* Budget gauges — fluid: 3 cols → 2 → 1 */
-  .gauges {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-    gap: 16px;
-    margin-bottom: 24px;
-  }
-  .gauge { background: #161b22; border: 1px solid #21262d; border-radius: 10px; padding: 16px; }
-  .gauge-label {
-    font-size: 0.8rem;
-    color: #8b949e;
-    margin-bottom: 6px;
-    display: flex;
-    justify-content: space-between;
-    flex-wrap: wrap;
-    gap: 4px;
-  }
-  .gauge-bar { height: 10px; background: #21262d; border-radius: 5px; overflow: hidden; }
-  .gauge-fill { height: 100%; border-radius: 5px; transition: width 0.5s; }
-  .gauge-fill.green { background: linear-gradient(90deg, #238636, #2ea043); }
-  .gauge-fill.yellow { background: linear-gradient(90deg, #d29922, #e3b341); }
-  .gauge-fill.red { background: linear-gradient(90deg, #da3633, #f85149); }
-  .gauge-fill.neutral { background: linear-gradient(90deg, #30363d, #8b949e); }
-  .gauge-value {
-    font-size: clamp(1.1rem, 3vw, 1.4rem);
-    font-weight: 600;
-    color: #f0f6fc;
-    margin-bottom: 2px;
-  }
-
-  /* Two-column card grid — collapses below 800 px */
-  .grid-2 {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 16px;
-    margin-bottom: 24px;
-  }
-  .card { background: #161b22; border: 1px solid #21262d; border-radius: 10px; padding: 20px; min-width: 0; }
-  .card h3 { font-size: 0.95rem; color: #f0f6fc; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
-  .card h3 .icon { font-size: 1.1rem; }
-  .chart-container { position: relative; height: 260px; }
-
-  /* Tables */
-  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
-  th { text-align: left; color: #8b949e; font-weight: 500; padding: 8px 12px; border-bottom: 1px solid #21262d; }
-  td { padding: 8px 12px; border-bottom: 1px solid #161b22; }
-  tr:hover td { background: #1c2128; }
-  .badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 500; }
-  .badge-opus { background: #3b1f6e; color: #d2a8ff; }
+  /* Shared primitives (chips, badges, period tabs) — mirror what's in the
+     3-up exploration file so this stands alone. */
+  .badge { display: inline-block; padding: 1px 7px; border-radius: 10px; font-size: 10px; font-weight: 500; letter-spacing: 0.02em; }
+  .badge-opus   { background: #3b1f6e; color: #d2a8ff; }
   .badge-sonnet { background: #1a3a2a; color: #7ee787; }
-  .badge-haiku { background: #1a2a3a; color: #79c0ff; }
-  .badge-unknown { background: #21262d; color: #8b949e; }
-  .pct-bar { display: inline-block; height: 6px; border-radius: 3px; margin-right: 8px; vertical-align: middle; }
-
-  /* Session drill-down */
-  .session-panel {
-    background: #161b22;
-    border: 1px solid #21262d;
-    border-radius: 10px;
-    padding: 20px;
-    margin-bottom: 24px;
+  .badge-haiku  { background: #1a2a3a; color: #79c0ff; }
+  .badge-unknown{ background: #21262d; color: #8b949e; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: #21262d; color: #c9d1d9;
+    padding: 2px 8px; border-radius: 12px; font-size: 11px;
   }
-  .session-panel h3 { font-size: 0.95rem; color: #f0f6fc; margin-bottom: 12px; }
-
-  /* Desktop session table layout */
-  .session-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-  .session-header-row {
-    display: grid;
-    grid-template-columns: 140px 180px 1fr 80px 120px 70px;
-    gap: 12px;
-    padding: 8px 0;
-    border-bottom: 1px solid #21262d;
-    font-size: 0.8rem;
-    color: #8b949e;
-    font-weight: 500;
-    min-width: 680px;
+  .pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 10px; border: 1px solid #30363d; border-radius: 999px;
+    background: #161b22; color: #c9d1d9; font-size: 11px; cursor: pointer;
+    white-space: nowrap;
   }
-  .session-row {
-    display: grid;
-    grid-template-columns: 140px 180px 1fr 80px 120px 70px;
-    gap: 12px;
-    padding: 10px 0;
-    border-bottom: 1px solid #21262d;
-    font-size: 0.85rem;
-    align-items: center;
-    min-width: 680px;
+  .period-tabs {
+    display: inline-flex; background: #0d1117; border: 1px solid #21262d;
+    border-radius: 8px; padding: 3px; gap: 2px;
   }
-  .session-row:last-child { border-bottom: none; }
-  .project-name { color: #ffa657; font-size: 0.8rem; }
-  .session-time { color: #8b949e; }
-  .session-agents { display: flex; gap: 4px; flex-wrap: wrap; }
-  .agent-tag {
-    display: inline-block;
-    padding: 2px 6px;
-    border-radius: 4px;
-    font-size: 0.7rem;
-    background: #21262d;
-    color: #c9d1d9;
+  .period-tabs button {
+    background: transparent; border: 0; color: #8b949e;
+    padding: 5px 12px; border-radius: 5px; font: inherit; font-size: 11px; cursor: pointer;
   }
-  .mini-bar { display: flex; height: 8px; border-radius: 4px; overflow: hidden; width: 100%; }
-  .mini-bar .opus { background: #8b5cf6; }
-  .mini-bar .sonnet { background: #2ea043; }
-  .mini-bar .haiku { background: #58a6ff; }
-  .mini-bar .unknown { background: #8b949e; }
+  .period-tabs button:hover { color: #f0f6fc; }
+  .period-tabs button.active { background: #21262d; color: #f0f6fc; }
 
-  .empty-state { color: #8b949e; font-size: 0.85rem; font-style: italic; padding: 16px 0; }
-  .drill-hint { font-size: 0.75rem; color: #8b949e; font-style: italic; margin-top: 8px; }
-  .clickable { cursor: pointer; }
-  .clickable:hover td { background: #1c2128; }
-
-  /* ── Responsive breakpoints ──────────────────────────────────────────────── */
-
-  /* ≤ 900 px: gauge grid already auto-fills to 2 cols via minmax;
-     explicitly cap at 2 to avoid 3-wide at awkward mid-sizes */
-  @media (max-width: 900px) {
-    .gauges {
-      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-    }
-  }
-
-  /* ≤ 800 px: collapse two-column card sections */
-  @media (max-width: 800px) {
-    .grid-2 {
-      grid-template-columns: 1fr;
-    }
-  }
-
-  /* ≤ 600 px: single-column gauge grid, tighter padding */
-  @media (max-width: 600px) {
-    .gauges {
-      grid-template-columns: 1fr;
-    }
-    body {
-      padding: 12px;
-    }
-    .card {
-      padding: 14px;
-    }
-    .session-panel {
-      padding: 14px;
-    }
-    /* Session rows: stacked card layout on narrow screens */
-    .session-header-row {
-      display: none;
-    }
-    .session-row {
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-      min-width: 0;
-      padding: 12px 0;
-      border: 1px solid #21262d;
-      border-radius: 8px;
-      padding: 12px;
-      margin-bottom: 8px;
-    }
-    .session-row::before {
-      content: attr(data-time);
-      font-size: 0.75rem;
-      color: #8b949e;
-    }
-    .mini-bar {
-      max-width: 200px;
-    }
-  }
-
-  /* ≤ 400 px: further tighten chart containers to avoid overflow */
-  @media (max-width: 400px) {
-    .chart-container {
-      height: 200px;
-    }
-    .gauge-value {
-      font-size: 1.1rem;
-    }
-  }
+  .muted { color: #8b949e; }
+  .dim   { color: #6e7681; }
+  .hi    { color: #f0f6fc; }
+  .num   { font-variant-numeric: tabular-nums; }
 </style>
 </head>
 <body>
-<div class="page-inner">
 
-<div class="header">
-  <div class="header-left">
-    <h1>Claude Code Usage</h1>
-    <span class="header-subtitle" id="subtitleTs">Generated: {{ generated_at }}</span>
-  </div>
-  <div class="controls">
-    <div>
-      <label>Period</label><br>
-      <select id="periodSelect" onchange="applyFilter()">
-        <option value="5h">Last 5 hours</option>
-        <option value="7d" selected>Last 7 days</option>
-        <option value="30d">Last 30 days</option>
-        <option value="all">All time</option>
-      </select>
-    </div>
-  </div>
-</div>
+<div class="stage" id="lbd-root"></div>
 
-<!-- Budget Gauges -->
-<div class="gauges" id="gaugesSection">
-  <!-- rendered by JS -->
-</div>
-
-<!-- Row 1: Model breakdown -->
-<div class="grid-2">
-  <div class="card">
-    <h3><span class="icon">&#x1f4ca;</span> Token Distribution by Model</h3>
-    <div class="chart-container">
-      <canvas id="modelDonut"></canvas>
-    </div>
-  </div>
-  <div class="card">
-    <h3><span class="icon">&#x1f4c8;</span> Daily Token Usage by Model</h3>
-    <div class="chart-container">
-      <canvas id="dailyStacked"></canvas>
-    </div>
-  </div>
-</div>
-
-<!-- Row 2: Agent breakdown -->
-<div class="grid-2">
-  <div class="card">
-    <h3><span class="icon">&#x1f916;</span> Tokens by Agent</h3>
-    <div class="chart-container">
-      <canvas id="agentBar"></canvas>
-    </div>
-  </div>
-  <div class="card">
-    <h3><span class="icon">&#x1f916;</span> Agent Details</h3>
-    <table id="agentTable">
-      <thead>
-        <tr><th>Agent</th><th>Model</th><th>Tokens</th><th>% Total</th><th>Sessions</th></tr>
-      </thead>
-      <tbody id="agentTableBody">
-      </tbody>
-    </table>
-  </div>
-</div>
-
-<!-- Row 3: Skills + Projects -->
-<div class="grid-2">
-  <div class="card">
-    <h3><span class="icon">&#x26a1;</span> Skill Invocations</h3>
-    <div class="chart-container">
-      <canvas id="skillBar"></canvas>
-    </div>
-  </div>
-  <div class="card">
-    <h3><span class="icon">&#x1f4c1;</span> Tokens by Project</h3>
-    <div class="chart-container">
-      <canvas id="projectBar"></canvas>
-    </div>
-  </div>
-</div>
-
-    <!-- Skill Adoption -->
-    <div id="skillAdoptionSection" class="card" style="display:none">
-      <h2>Skill Adoption (Pass-Through Tracking)</h2>
-      <div style="height:300px"><canvas id="skillAdoption"></canvas></div>
-      <table class="detail-table">
-        <thead>
-          <tr>
-            <th>Skill</th>
-            <th>Passed</th>
-            <th>Invoked</th>
-            <th>Rate</th>
-            <th>Per Agent</th>
-          </tr>
-        </thead>
-        <tbody id="skillAdoptionTableBody"></tbody>
-      </table>
-    </div>
-
-<!-- Session drill-down -->
-<div class="session-panel">
-  <h3>&#x1f50d; Session Drill-Down</h3>
-  <div id="sessionContainer">
-    <div class="session-scroll">
-      <div class="session-header-row">
-        <div>Time</div><div>Project</div><div>Agents</div><div>Tokens</div><div>Model Split</div><div>Duration</div>
-      </div>
-      <div id="sessionRows"></div>
-    </div>
-  </div>
-</div>
-
+<!-- Data injected by Jinja from claude_prospector.renderer -->
 <script>
-const DATA = {{ data_json | safe }};
-const LIMITS = {{ limits_json | safe }};
-
-// Color palette
-const OPUS    = '#8b5cf6';
-const SONNET  = '#2ea043';
-const HAIKU   = '#58a6ff';
-const UNKNOWN = '#8b949e';
-const GRID    = '#21262d';
-const TEXT    = '#8b949e';
-
-Chart.defaults.color = TEXT;
-Chart.defaults.borderColor = GRID;
-
-// Chart instances — stored so we can destroy/recreate on filter change
-let charts = {};
-
-function modelColor(model) {
-  if (!model) return UNKNOWN;
-  const m = model.toLowerCase();
-  if (m.includes('opus'))   return OPUS;
-  if (m.includes('sonnet')) return SONNET;
-  if (m.includes('haiku'))  return HAIKU;
-  return UNKNOWN;
-}
-
-function modelBadgeClass(model) {
-  if (!model) return 'badge-unknown';
-  const m = model.toLowerCase();
-  if (m.includes('opus'))   return 'badge-opus';
-  if (m.includes('sonnet')) return 'badge-sonnet';
-  if (m.includes('haiku'))  return 'badge-haiku';
-  return 'badge-unknown';
-}
-
-function fmtTokens(n) {
-  if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
-  if (n >= 1000)    return Math.round(n / 1000) + 'K';
-  return String(n);
-}
-
-function fmtDuration(minutes) {
-  if (minutes === null || minutes === undefined) return '—';
-  const m = Math.round(minutes);
-  if (m < 60) return m + 'm';
-  const h = Math.floor(m / 60);
-  const rem = m % 60;
-  return rem > 0 ? h + 'h ' + rem + 'm' : h + 'h';
-}
-
-function getWindowStart(period) {
-  const now = new Date();
-  if (period === '5h')  return new Date(now.getTime() - 5  * 60 * 60 * 1000);
-  if (period === '7d')  return new Date(now.getTime() - 7  * 24 * 60 * 60 * 1000);
-  if (period === '30d') return new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-  return null; // all time
-}
-
-function filterSessions(period) {
-  const cutoff = getWindowStart(period);
-  if (!cutoff) return DATA.sessions;
-  return DATA.sessions.filter(s => new Date(s.start_time) >= cutoff);
-}
-
-// Re-aggregate filtered sessions into the same shape as DATA fields
-function reAggregate(sessions) {
-  const byModel   = {};
-  const byAgent   = {};
-  const bySkill   = {};
-  const byProject = {};
-  const byDay     = {};
-  let totalTokens = 0;
-
-  // For session-only slices we don't have per-message skill data,
-  // so for skills we fall back to the full DATA (not time-filterable at this layer).
-  // We do our best with what we have in session summaries.
-
-  for (const s of sessions) {
-    totalTokens += s.total_tokens;
-
-    // by_project
-    if (!byProject[s.project]) byProject[s.project] = { total_tokens: 0, session_count: 0 };
-    byProject[s.project].total_tokens += s.total_tokens;
-    byProject[s.project].session_count += 1;
-
-    // by_model (from model_split)
-    for (const [model, tokens] of Object.entries(s.model_split || {})) {
-      if (!byModel[model]) byModel[model] = { total_tokens: 0 };
-      byModel[model].total_tokens += tokens;
-    }
-
-    // by_day (from start_time)
-    const day = s.start_time.slice(0, 10);
-    if (!byDay[day]) byDay[day] = { total_tokens: 0, by_model: {} };
-    byDay[day].total_tokens += s.total_tokens;
-    for (const [model, tokens] of Object.entries(s.model_split || {})) {
-      byDay[day].by_model[model] = (byDay[day].by_model[model] || 0) + tokens;
-    }
-
-    // by_agent
-    for (const agent of (s.agents || [])) {
-      if (!byAgent[agent]) byAgent[agent] = { total_tokens: 0, session_count: 0, primary_model: null, model_tokens: {} };
-      byAgent[agent].session_count += 1;
-      // We don't have per-agent token splits inside sessions, use session total / agent count as rough proxy
-      const share = Math.round(s.total_tokens / Math.max(1, s.agents.length));
-      byAgent[agent].total_tokens += share;
-      for (const [model, tokens] of Object.entries(s.model_split || {})) {
-        byAgent[agent].model_tokens[model] = (byAgent[agent].model_tokens[model] || 0) + Math.round(tokens / Math.max(1, s.agents.length));
-      }
-    }
-  }
-
-  // Determine primary model per agent.
-  // Use DATA.by_agent[agent].primary_model as the authoritative source — it is
-  // computed server-side from actual per-message model fields and correctly
-  // attributes each subagent to the model it actually ran on.  The token-split
-  // heuristic below (dividing session totals equally across all agents in a
-  // session) is unreliable: a Sonnet subagent inside an Opus parent session
-  // ends up accumulating more Opus tokens than Sonnet tokens, which makes it
-  // appear to be an Opus agent even though every one of its messages used Sonnet.
-  for (const [agent, info] of Object.entries(byAgent)) {
-    const authoritative = DATA.by_agent && DATA.by_agent[agent] && DATA.by_agent[agent].primary_model;
-    if (authoritative) {
-      info.primary_model = authoritative;
-    } else {
-      // Fallback: best-effort heuristic from session-level token splits.
-      // Only used for agents not present in the server-computed DATA.by_agent
-      // (e.g. agents that only appear in filtered-out sessions).
-      let best = null, bestCount = 0;
-      for (const [model, count] of Object.entries(info.model_tokens || {})) {
-        if (count > bestCount) { best = model; bestCount = count; }
-      }
-      info.primary_model = best;
-    }
-  }
-
-  // For skills use the full DATA (filter not possible without per-message timestamps)
-  const skillSource = DATA.by_skill || {};
-
-  return { byModel, byAgent, bySkill: skillSource, byProject, byDay, totalTokens };
-}
-
-function destroyChart(id) {
-  if (charts[id]) { charts[id].destroy(); delete charts[id]; }
-}
-
-// ── Budget Gauges ────────────────────────────────────────────────────────────
-
-function renderGauges(filteredSessions, totalTokens) {
-  const section = document.getElementById('gaugesSection');
-
-  function gaugeColorClass(pct) {
-    if (pct < 60) return 'green';
-    if (pct < 80) return 'yellow';
-    return 'red';
-  }
-
-  function buildGauge(label, value, limit, sublabel) {
-    if (limit) {
-      const pct = Math.min(100, Math.round((value / limit) * 100));
-      const cls = gaugeColorClass(pct);
-      return `
-        <div class="gauge">
-          <div class="gauge-value">${pct}%</div>
-          <div class="gauge-label"><span>${label}</span><span>${fmtTokens(value)} / ${fmtTokens(limit)}</span></div>
-          <div class="gauge-bar"><div class="gauge-fill ${cls}" style="width:${pct}%"></div></div>
-        </div>`;
-    } else {
-      // No limits — show raw count
-      const fillPct = totalTokens > 0 ? Math.round((value / totalTokens) * 100) : 0;
-      return `
-        <div class="gauge">
-          <div class="gauge-value">${fmtTokens(value)}</div>
-          <div class="gauge-label"><span>${label}</span><span>${sublabel}</span></div>
-          <div class="gauge-bar"><div class="gauge-fill neutral" style="width:${Math.min(100,fillPct)}%"></div></div>
-        </div>`;
-    }
-  }
-
-  // Rolling 5-hour tokens
-  const now = new Date();
-  const cut5h  = new Date(now.getTime() - 5  * 60 * 60 * 1000);
-  const cut7d  = new Date(now.getTime() - 7  * 24 * 60 * 60 * 1000);
-
-  let tokens5h = 0, tokens7d = 0, sonnetTokens7d = 0;
-  for (const s of DATA.sessions) {
-    const t = new Date(s.start_time);
-    const tok = s.total_tokens;
-    if (t >= cut5h) tokens5h += tok;
-    if (t >= cut7d) {
-      tokens7d += tok;
-      sonnetTokens7d += (s.model_split && s.model_split['sonnet']) || 0;
-    }
-  }
-
-  const lim5h  = LIMITS && LIMITS.limit_5h        ? LIMITS.limit_5h        : null;
-  const lim7d  = LIMITS && LIMITS.limit_7d        ? LIMITS.limit_7d        : null;
-  const limSon = LIMITS && LIMITS.limit_sonnet_7d ? LIMITS.limit_sonnet_7d : null;
-
-  section.innerHTML =
-    buildGauge('5-Hour Rolling',    tokens5h,       lim5h,  'tokens') +
-    buildGauge('7-Day Rolling',     tokens7d,       lim7d,  'tokens') +
-    buildGauge('Sonnet-Only 7-Day', sonnetTokens7d, limSon, 'sonnet tokens');
-}
-
-// ── Model Donut ──────────────────────────────────────────────────────────────
-
-function renderModelDonut(byModel, totalTokens) {
-  destroyChart('modelDonut');
-  const models  = Object.keys(byModel);
-  const values  = models.map(m => byModel[m].total_tokens);
-  const colors  = models.map(m => modelColor(m));
-  const labels  = models.map(m => m || 'unknown');
-
-  charts['modelDonut'] = new Chart(document.getElementById('modelDonut'), {
-    type: 'doughnut',
-    data: {
-      labels,
-      datasets: [{
-        data: values,
-        backgroundColor: colors,
-        borderWidth: 0,
-        hoverOffset: 8
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      cutout: '65%',
-      plugins: {
-        legend: { position: 'bottom', labels: { padding: 16, usePointStyle: true, pointStyle: 'circle' } },
-        tooltip: {
-          callbacks: {
-            label: ctx => {
-              const pct = totalTokens > 0 ? Math.round((ctx.parsed / totalTokens) * 100) : 0;
-              return `${ctx.label}: ${fmtTokens(ctx.parsed)} (${pct}%)`;
-            }
-          }
-        }
-      }
-    }
-  });
-}
-
-// ── Daily Stacked Bar ────────────────────────────────────────────────────────
-
-function renderDailyStacked(byDay) {
-  destroyChart('dailyStacked');
-  const days = Object.keys(byDay).sort();
-  const allModels = new Set();
-  days.forEach(d => Object.keys(byDay[d].by_model).forEach(m => allModels.add(m)));
-
-  const orderedModels = ['opus', 'sonnet', 'haiku', ...([...allModels].filter(m => !['opus','sonnet','haiku'].includes(m)))];
-  const presentModels = orderedModels.filter(m => allModels.has(m));
-
-  const datasets = presentModels.map(model => ({
-    label: model || 'unknown',
-    data: days.map(d => byDay[d].by_model[model] || 0),
-    backgroundColor: modelColor(model)
-  }));
-
-  charts['dailyStacked'] = new Chart(document.getElementById('dailyStacked'), {
-    type: 'bar',
-    data: { labels: days, datasets },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      scales: {
-        x: { stacked: true, grid: { display: false } },
-        y: { stacked: true, ticks: { callback: v => fmtTokens(v) }, grid: { color: GRID } }
-      },
-      plugins: {
-        legend: { position: 'bottom', labels: { padding: 16, usePointStyle: true, pointStyle: 'circle' } },
-        tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${fmtTokens(ctx.parsed.y)}` } }
-      }
-    }
-  });
-}
-
-// ── Agent Bar ────────────────────────────────────────────────────────────────
-
-function renderAgentBar(byAgent) {
-  destroyChart('agentBar');
-  const agents = Object.entries(byAgent)
-    .sort((a, b) => b[1].total_tokens - a[1].total_tokens);
-
-  const labels = agents.map(([a]) => a || 'unknown');
-  const values = agents.map(([, info]) => info.total_tokens);
-  const colors = agents.map(([, info]) => modelColor(info.primary_model));
-
-  const canvas = document.getElementById('agentBar');
-  canvas.parentElement.style.height = Math.max(180, agents.length * 28 + 40) + 'px';
-
-  charts['agentBar'] = new Chart(canvas, {
-    type: 'bar',
-    data: {
-      labels,
-      datasets: [{
-        data: values,
-        backgroundColor: colors,
-        borderRadius: 4
-      }]
-    },
-    options: {
-      indexAxis: 'y',
-      responsive: true,
-      maintainAspectRatio: false,
-      scales: {
-        x: { ticks: { callback: v => fmtTokens(v) }, grid: { color: GRID } },
-        y: { grid: { display: false }, ticks: { autoSkip: false } }
-      },
-      plugins: {
-        legend: { display: false },
-        tooltip: { callbacks: { label: ctx => fmtTokens(ctx.parsed.x) + ' tokens' } }
-      }
-    }
-  });
-}
-
-// ── Agent Table ──────────────────────────────────────────────────────────────
-
-function renderAgentTable(byAgent, totalTokens) {
-  const tbody = document.getElementById('agentTableBody');
-  const agents = Object.entries(byAgent)
-    .sort((a, b) => b[1].total_tokens - a[1].total_tokens);
-
-  tbody.innerHTML = agents.map(([agent, info]) => {
-    const pct = totalTokens > 0 ? Math.round((info.total_tokens / totalTokens) * 100) : 0;
-    const barW = Math.round(pct * 1.2); // max ~120px for 100%
-    const model = info.primary_model || 'unknown';
-    const badgeCls = modelBadgeClass(model);
-    const color = modelColor(model);
-    return `<tr>
-      <td>${agent || 'unknown'}</td>
-      <td><span class="badge ${badgeCls}">${model}</span></td>
-      <td>${fmtTokens(info.total_tokens)}</td>
-      <td><span class="pct-bar" style="width:${barW}px;background:${color}"></span>${pct}%</td>
-      <td>${info.session_count || 0}</td>
-    </tr>`;
-  }).join('');
-
-  if (!agents.length) {
-    tbody.innerHTML = '<tr><td colspan="5" class="empty-state">No data for this period</td></tr>';
-  }
-}
-
-// ── Skill Bar ────────────────────────────────────────────────────────────────
-
-function renderSkillBar(bySkill) {
-  destroyChart('skillBar');
-  const skills = Object.entries(bySkill)
-    .sort((a, b) => b[1].invocation_count - a[1].invocation_count);
-
-  const labels = skills.map(([s]) => s || 'unknown');
-  const values = skills.map(([, info]) => info.invocation_count);
-
-  const canvas = document.getElementById('skillBar');
-  canvas.parentElement.style.height = Math.max(180, skills.length * 28 + 40) + 'px';
-
-  charts['skillBar'] = new Chart(canvas, {
-    type: 'bar',
-    data: {
-      labels,
-      datasets: [{
-        label: 'Invocations',
-        data: values,
-        backgroundColor: '#d2a8ff',
-        borderRadius: 4
-      }]
-    },
-    options: {
-      indexAxis: 'y',
-      responsive: true,
-      maintainAspectRatio: false,
-      scales: {
-        x: { grid: { color: GRID } },
-        y: { grid: { display: false }, ticks: { autoSkip: false } }
-      },
-      plugins: { legend: { display: false } }
-    }
-  });
-}
-
-// ── Skill Adoption ───────────────────────────────────────────────────────────
-
-function renderSkillAdoption(bySkillAdoption) {
-  const container = document.getElementById('skillAdoptionSection');
-  if (!bySkillAdoption || Object.keys(bySkillAdoption).length === 0) {
-    container.style.display = 'none';
-    return;
-  }
-  container.style.display = '';
-
-  destroyChart('skillAdoption');
-  const skills = Object.entries(bySkillAdoption)
-    .sort((a, b) => b[1].times_passed - a[1].times_passed);
-
-  const labels = skills.map(([s]) => s);
-  const passedData = skills.map(([, info]) => info.times_passed);
-  const invokedData = skills.map(([, info]) => info.times_invoked);
-
-  const skillAdoptionCanvas = document.getElementById('skillAdoption');
-  skillAdoptionCanvas.parentElement.style.height = Math.max(180, skills.length * 28 + 40) + 'px';
-
-  charts['skillAdoption'] = new Chart(skillAdoptionCanvas, {
-    type: 'bar',
-    data: {
-      labels,
-      datasets: [
-        {
-          label: 'Passed',
-          data: passedData,
-          backgroundColor: '#8b949e',
-          borderRadius: 4
-        },
-        {
-          label: 'Invoked',
-          data: invokedData,
-          backgroundColor: '#2ea043',
-          borderRadius: 4
-        }
-      ]
-    },
-    options: {
-      indexAxis: 'y',
-      responsive: true,
-      maintainAspectRatio: false,
-      scales: {
-        x: { grid: { color: GRID }, stacked: false },
-        y: { grid: { display: false }, ticks: { autoSkip: false } }
-      },
-      plugins: {
-        legend: { labels: { color: TEXT } },
-        tooltip: {
-          callbacks: {
-            afterBody: function(context) {
-              const idx = context[0].dataIndex;
-              const skill = labels[idx];
-              const info = bySkillAdoption[skill];
-              return 'Adoption: ' + (info.adoption_rate * 100).toFixed(0) + '%';
-            }
-          }
-        }
-      }
-    }
-  });
-
-  // Render detail table
-  const tbody = document.getElementById('skillAdoptionTableBody');
-  tbody.innerHTML = skills.map(([skill, info]) => {
-    const rate = (info.adoption_rate * 100).toFixed(0);
-    const agents = Object.entries(info.by_target_agent || {})
-      .map(([agent, counts]) => agent + ': ' + counts.invoked + '/' + counts.passed)
-      .join(', ');
-    return '<tr>' +
-      '<td>' + skill + '</td>' +
-      '<td>' + info.times_passed + '</td>' +
-      '<td>' + info.times_invoked + '</td>' +
-      '<td>' + rate + '%</td>' +
-      '<td style="font-size:0.85em;color:#8b949e">' + agents + '</td>' +
-    '</tr>';
-  }).join('');
-}
-
-// ── Project Bar ──────────────────────────────────────────────────────────────
-
-function renderProjectBar(byProject) {
-  destroyChart('projectBar');
-  const projects = Object.entries(byProject)
-    .sort((a, b) => b[1].total_tokens - a[1].total_tokens);
-
-  const labels = projects.map(([p]) => p || 'unknown');
-  const values = projects.map(([, info]) => info.total_tokens);
-  const palette = ['#f78166','#ffa657','#d2a8ff','#79c0ff','#7ee787','#e3b341','#58a6ff','#8b5cf6'];
-  const colors  = projects.map((_, i) => palette[i % palette.length]);
-
-  const projectBarCanvas = document.getElementById('projectBar');
-  projectBarCanvas.parentElement.style.height = Math.max(180, projects.length * 28 + 40) + 'px';
-
-  charts['projectBar'] = new Chart(projectBarCanvas, {
-    type: 'bar',
-    data: {
-      labels,
-      datasets: [{
-        label: 'Tokens',
-        data: values,
-        backgroundColor: colors,
-        borderRadius: 4
-      }]
-    },
-    options: {
-      indexAxis: 'y',
-      responsive: true,
-      maintainAspectRatio: false,
-      scales: {
-        x: { ticks: { callback: v => fmtTokens(v) }, grid: { color: GRID } },
-        y: { grid: { display: false }, ticks: { autoSkip: false } }
-      },
-      plugins: {
-        legend: { display: false },
-        tooltip: { callbacks: { label: ctx => fmtTokens(ctx.parsed.x) + ' tokens' } }
-      }
-    }
-  });
-}
-
-// ── Session Rows ─────────────────────────────────────────────────────────────
-
-function renderSessions(sessions) {
-  const container = document.getElementById('sessionRows');
-
-  if (!sessions.length) {
-    container.innerHTML = '<div class="empty-state">No sessions in this time window.</div>';
-    return;
-  }
-
-  container.innerHTML = sessions.map(s => {
-    const dt = new Date(s.start_time);
-    const timeStr = dt.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
-
-    const agentTags = (s.agents || [])
-      .map(a => `<span class="agent-tag">${a}</span>`)
-      .join('');
-
-    const split = s.model_split || {};
-    const splitTotal = Object.values(split).reduce((a, b) => a + b, 0) || 1;
-    const miniBarParts = Object.entries(split)
-      .map(([model, tokens]) => {
-        const pct = Math.round((tokens / splitTotal) * 100);
-        const cls = model.toLowerCase().includes('opus') ? 'opus'
-                  : model.toLowerCase().includes('sonnet') ? 'sonnet'
-                  : model.toLowerCase().includes('haiku') ? 'haiku'
-                  : 'unknown';
-        return `<div class="${cls}" style="width:${pct}%"></div>`;
-      }).join('');
-
-    return `<div class="session-row clickable">
-      <div class="session-time">${timeStr}</div>
-      <div class="project-name">${s.project || '—'}</div>
-      <div class="session-agents">${agentTags}</div>
-      <div>${fmtTokens(s.total_tokens)}</div>
-      <div><div class="mini-bar">${miniBarParts}</div></div>
-      <div class="session-time">${fmtDuration(s.duration_minutes)}</div>
-    </div>`;
-  }).join('');
-}
-
-// ── Main render / filter ─────────────────────────────────────────────────────
-
-function applyFilter() {
-  const period = document.getElementById('periodSelect').value;
-  const sessions = filterSessions(period);
-  const { byModel, byAgent, bySkill, byProject, byDay, totalTokens } = reAggregate(sessions);
-
-  renderGauges(sessions, totalTokens);
-  renderModelDonut(byModel, totalTokens);
-  renderDailyStacked(byDay);
-  renderAgentBar(byAgent);
-  renderAgentTable(byAgent, totalTokens);
-  renderSkillBar(bySkill);
-  renderSkillAdoption(DATA.by_skill_adoption);
-  renderProjectBar(byProject);
-  renderSessions(sessions);
-}
-
-// Initial render
-applyFilter();
+  window.DATA = {{ data_json | safe }};
+  // limits_json renders the literal "null" when limits is None; coerce to {}.
+  const _limits_raw = {{ limits_json | safe }};
+  window.LIMITS = _limits_raw || {};
+  window.GENERATED_AT = "{{ generated_at }}";
 </script>
 
-</div><!-- /.page-inner -->
+<!-- CP helpers (formatters, palette, aggregation, sparklines, chart defaults) -->
+<script>
+// Shared utilities, palette, chart defaults.
+
+(function () {
+  // ── Palette (GitHub-dark inspired) ───────────────────────────────────────
+  const PALETTE = {
+    bg:        '#0d1117',
+    bgAlt:     '#0a0d12',
+    card:      '#161b22',
+    cardHi:    '#1c2230',
+    border:    '#21262d',
+    borderHi:  '#30363d',
+    text:      '#c9d1d9',
+    textHi:    '#f0f6fc',
+    textMute:  '#8b949e',
+    textDim:   '#6e7681',
+
+    opus:      '#8b5cf6',
+    sonnet:    '#2ea043',
+    haiku:     '#58a6ff',
+    unknown:   '#8b949e',
+
+    accent:    '#d2a8ff',
+    warn:      '#d29922',
+    danger:    '#f85149',
+    ok:        '#3fb950',
+    info:      '#79c0ff',
+
+    grid:      '#21262d',
+  };
+
+  // ── Formatters ───────────────────────────────────────────────────────────
+  function fmtTokens(n) {
+    if (n == null) return '—';
+    if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
+    if (n >= 1000)      return (n / 1000).toFixed(n >= 10000 ? 0 : 1) + 'K';
+    return String(Math.round(n));
+  }
+  function fmtTokensFull(n) {
+    if (n == null) return '—';
+    return n.toLocaleString();
+  }
+  function fmtPct(n) { return Math.round(n) + '%'; }
+  function fmtDuration(minutes) {
+    if (minutes == null) return '—';
+    const m = Math.round(minutes);
+    if (m < 60) return m + 'm';
+    const h = Math.floor(m / 60);
+    const rem = m % 60;
+    return rem > 0 ? h + 'h ' + rem + 'm' : h + 'h';
+  }
+  function fmtRelTime(iso, now = new Date()) {
+    const t = new Date(iso);
+    const diffMin = Math.round((now - t) / 60000);
+    if (diffMin < 1)   return 'just now';
+    if (diffMin < 60)  return diffMin + 'm ago';
+    const diffHr = Math.round(diffMin / 60);
+    if (diffHr < 24)   return diffHr + 'h ago';
+    const diffD = Math.round(diffHr / 24);
+    return diffD + 'd ago';
+  }
+  function fmtDay(iso) {
+    return new Date(iso + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  }
+
+  // ── Model helpers ────────────────────────────────────────────────────────
+  function modelColor(model) {
+    if (!model) return PALETTE.unknown;
+    const m = model.toLowerCase();
+    if (m.includes('opus'))   return PALETTE.opus;
+    if (m.includes('sonnet')) return PALETTE.sonnet;
+    if (m.includes('haiku'))  return PALETTE.haiku;
+    return PALETTE.unknown;
+  }
+
+  // ── Time filtering ───────────────────────────────────────────────────────
+  function windowCutoff(period, now = new Date()) {
+    if (period === '5h')  return new Date(now.getTime() - 5  * 60 * 60 * 1000);
+    if (period === '24h') return new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    if (period === '7d')  return new Date(now.getTime() - 7  * 24 * 60 * 60 * 1000);
+    if (period === '30d') return new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    return null;
+  }
+  function filterSessions(sessions, period) {
+    const c = windowCutoff(period);
+    if (!c) return sessions.slice();
+    return sessions.filter(s => new Date(s.start_time) >= c);
+  }
+
+  // ── Re-aggregate filtered sessions ───────────────────────────────────────
+  function reAggregate(sessions, authoritative = {}) {
+    const byModel = {};
+    const byAgent = {};
+    const byProject = {};
+    const byDay = {};
+    let totalTokens = 0;
+
+    for (const s of sessions) {
+      totalTokens += s.total_tokens;
+
+      if (!byProject[s.project]) byProject[s.project] = { total_tokens: 0, session_count: 0 };
+      byProject[s.project].total_tokens += s.total_tokens;
+      byProject[s.project].session_count += 1;
+
+      for (const [m, t] of Object.entries(s.model_split || {})) {
+        if (!byModel[m]) byModel[m] = { total_tokens: 0 };
+        byModel[m].total_tokens += t;
+      }
+
+      const d = s.start_time.slice(0, 10);
+      if (!byDay[d]) byDay[d] = { total_tokens: 0, by_model: {} };
+      byDay[d].total_tokens += s.total_tokens;
+      for (const [m, t] of Object.entries(s.model_split || {})) {
+        byDay[d].by_model[m] = (byDay[d].by_model[m] || 0) + t;
+      }
+
+      for (const agent of (s.agents || [])) {
+        if (!byAgent[agent]) byAgent[agent] = { total_tokens: 0, session_count: 0, primary_model: null, _modelTokens: {} };
+        byAgent[agent].session_count += 1;
+        const share = Math.round(s.total_tokens / Math.max(1, s.agents.length));
+        byAgent[agent].total_tokens += share;
+        for (const [m, t] of Object.entries(s.model_split || {})) {
+          byAgent[agent]._modelTokens[m] = (byAgent[agent]._modelTokens[m] || 0) + Math.round(t / Math.max(1, s.agents.length));
+        }
+      }
+    }
+
+    for (const [agent, info] of Object.entries(byAgent)) {
+      if (authoritative[agent] && authoritative[agent].primary_model) {
+        info.primary_model = authoritative[agent].primary_model;
+      } else {
+        let best = null, bestC = 0;
+        for (const [m, c] of Object.entries(info._modelTokens || {})) {
+          if (c > bestC) { best = m; bestC = c; }
+        }
+        info.primary_model = best;
+      }
+    }
+
+    return { byModel, byAgent, byProject, byDay, totalTokens };
+  }
+
+  // ── Budget computations ──────────────────────────────────────────────────
+  function computeBuckets(sessions, limits, now = new Date()) {
+    const c5h = new Date(now.getTime() - 5  * 60 * 60 * 1000);
+    const c7d = new Date(now.getTime() - 7  * 24 * 60 * 60 * 1000);
+    let t5h = 0, t7d = 0, sonnet7d = 0;
+    for (const s of sessions) {
+      const t = new Date(s.start_time);
+      if (t >= c5h) t5h += s.total_tokens;
+      if (t >= c7d) {
+        t7d += s.total_tokens;
+        sonnet7d += (s.model_split && s.model_split.sonnet) || 0;
+      }
+    }
+    return {
+      h5:     { value: t5h,      limit: limits.limit_5h        || null, label: '5-hour rolling',     color: PALETTE.info   },
+      d7:     { value: t7d,      limit: limits.limit_7d        || null, label: '7-day rolling',      color: PALETTE.accent },
+      son7d:  { value: sonnet7d, limit: limits.limit_sonnet_7d || null, label: 'Sonnet · 7d',        color: PALETTE.sonnet },
+    };
+  }
+
+  // ── Pace / forecasting ───────────────────────────────────────────────────
+  // Given current consumption and a window length, estimate hit-time for a limit.
+  function forecastHit(currentValue, limit, windowHours, now = new Date()) {
+    if (!limit) return null;
+    const pace = currentValue / windowHours; // tokens per hour
+    if (pace <= 0) return null;
+    const remaining = limit - currentValue;
+    if (remaining <= 0) return { hitNow: true };
+    const hoursToHit = remaining / pace;
+    return {
+      pace,
+      hoursToHit,
+      hitAt: new Date(now.getTime() + hoursToHit * 60 * 60 * 1000),
+      onPace: hoursToHit < windowHours,
+    };
+  }
+
+  // ── Sparkline (SVG) ──────────────────────────────────────────────────────
+  function sparkline(values, { width = 120, height = 28, stroke = PALETTE.info, fill = null, strokeWidth = 1.5 } = {}) {
+    if (!values || !values.length) return '';
+    const max = Math.max(...values, 1);
+    const min = Math.min(...values, 0);
+    const range = Math.max(1, max - min);
+    const stepX = values.length > 1 ? width / (values.length - 1) : 0;
+    const pts = values.map((v, i) => {
+      const x = i * stepX;
+      const y = height - ((v - min) / range) * (height - 4) - 2;
+      return [x, y];
+    });
+    const path = pts.map((p, i) => (i === 0 ? 'M' : 'L') + p[0].toFixed(1) + ',' + p[1].toFixed(1)).join(' ');
+    const area = fill
+      ? `<path d="${path} L ${width},${height} L 0,${height} Z" fill="${fill}" opacity="0.18" />`
+      : '';
+    const dotX = pts[pts.length - 1][0];
+    const dotY = pts[pts.length - 1][1];
+    return `<svg viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+      ${area}
+      <path d="${path}" fill="none" stroke="${stroke}" stroke-width="${strokeWidth}" stroke-linecap="round" stroke-linejoin="round" />
+      <circle cx="${dotX.toFixed(1)}" cy="${dotY.toFixed(1)}" r="2.2" fill="${stroke}" />
+    </svg>`;
+  }
+
+  // ── Chart.js defaults ────────────────────────────────────────────────────
+  function applyChartDefaults() {
+    if (!window.Chart) return;
+    Chart.defaults.color = PALETTE.textMute;
+    Chart.defaults.borderColor = PALETTE.grid;
+    Chart.defaults.font.family = "ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+    Chart.defaults.font.size = 11;
+  }
+
+  // ── Chart instance tracking ──────────────────────────────────────────────
+  const _charts = {};
+  function destroyChart(id) {
+    if (_charts[id]) { _charts[id].destroy(); delete _charts[id]; }
+  }
+  function destroyChartsByPrefix(prefix) {
+    for (const id of Object.keys(_charts)) {
+      if (id.startsWith(prefix)) destroyChart(id);
+    }
+  }
+  function registerChart(id, chart) { _charts[id] = chart; }
+
+  // ── Per-day series for a model over the last N days ──────────────────────
+  function modelSeries(byDay, model, days = 7, now = new Date()) {
+    const out = [];
+    for (let i = days - 1; i >= 0; i--) {
+      const d = new Date(now.getTime() - i * 86400000);
+      const key = d.toISOString().slice(0, 10);
+      const row = byDay[key];
+      if (!row) { out.push(0); continue; }
+      if (!model) out.push(row.total_tokens);
+      else out.push((row.by_model && row.by_model[model]) || 0);
+    }
+    return out;
+  }
+
+  // ── Export ───────────────────────────────────────────────────────────────
+  window.CP = {
+    PALETTE,
+    fmtTokens, fmtTokensFull, fmtPct, fmtDuration, fmtRelTime, fmtDay,
+    modelColor,
+    windowCutoff, filterSessions, reAggregate, computeBuckets, forecastHit,
+    sparkline,
+    applyChartDefaults, destroyChart, destroyChartsByPrefix, registerChart,
+    modelSeries,
+  };
+})();
+
+</script>
+
+<!-- Diagnostic-tabs layout renderer -->
+<script>
+// Layout B — Diagnostic Tabs variant.
+// Reuses B's visual style. Replaces the static Insights row with a single
+// "Diagnostics" card containing horizontal badged tabs. Adds a one-line alert
+// summary directly under the page title.
+
+(function () {
+  const PALETTE = CP.PALETTE;
+
+  // ── CSS ─────────────────────────────────────────────────────────────────
+  // Mirrors layout-b's idioms (so this file stands alone), then layers the
+  // diagnostic tab styles on top.
+  const css = `
+    .lbd-style { color: #c9d1d9; }
+
+    /* Page head */
+    .lbd-style .pagehead {
+      display: flex; align-items: flex-end; justify-content: space-between;
+      gap: 16px; margin-bottom: 8px; flex-wrap: wrap;
+    }
+    .lbd-style .pagehead h1 {
+      font-size: 22px; color: #f0f6fc; letter-spacing: -0.02em; font-weight: 600;
+    }
+    .lbd-style .pagehead h1 span { color: #6e7681; font-weight: 400; }
+    .lbd-style .pagehead .sub { color: #8b949e; font-size: 12px; margin-top: 4px; }
+    .lbd-style .pagehead-right { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+
+    /* Alert summary line — single-line dynamic headline below title */
+    .lbd-style .alert-line {
+      display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+      padding: 10px 14px;
+      background: linear-gradient(90deg, rgba(210,153,34,0.10), rgba(210,153,34,0.02));
+      border: 1px solid rgba(210,153,34,0.25);
+      border-radius: 8px;
+      margin-bottom: 18px;
+      font-size: 12px;
+      color: #c9d1d9;
+    }
+    .lbd-style .alert-line.ok {
+      background: linear-gradient(90deg, rgba(63,185,80,0.10), rgba(63,185,80,0.02));
+      border-color: rgba(63,185,80,0.25);
+    }
+    .lbd-style .alert-line.crit {
+      background: linear-gradient(90deg, rgba(248,81,73,0.10), rgba(248,81,73,0.02));
+      border-color: rgba(248,81,73,0.25);
+    }
+    .lbd-style .alert-line .ico {
+      width: 22px; height: 22px; border-radius: 6px;
+      display: inline-flex; align-items: center; justify-content: center;
+      font-weight: 700; font-size: 12px; flex-shrink: 0;
+    }
+    .lbd-style .alert-line.ok   .ico { background: rgba(63,185,80,0.18);  color: #3fb950; }
+    .lbd-style .alert-line.warn .ico { background: rgba(210,153,34,0.18); color: #e3b341; }
+    .lbd-style .alert-line.crit .ico { background: rgba(248,81,73,0.18);  color: #f85149; }
+    .lbd-style .alert-line .seg  { display: inline-flex; align-items: center; gap: 6px; }
+    .lbd-style .alert-line b { color: #f0f6fc; font-weight: 500; }
+    .lbd-style .alert-line .sep { color: #30363d; }
+
+    /* Budgets hero (carried from B) */
+    .lbd-style .budgets {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;
+      margin-bottom: 18px;
+    }
+    @media (max-width: 1000px) { .lbd-style .budgets { grid-template-columns: 1fr; } }
+    .lbd-style .bcard {
+      background: #161b22; border: 1px solid #21262d; border-radius: 12px;
+      padding: 16px 18px; position: relative; overflow: hidden;
+    }
+    .lbd-style .bcard::before {
+      content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
+      background: var(--accent, #58a6ff);
+    }
+    .lbd-style .bcard .top { display: flex; justify-content: space-between; align-items: baseline; }
+    .lbd-style .bcard .name { font-size: 11px; color: #8b949e; text-transform: uppercase; letter-spacing: 0.04em; font-weight: 500; }
+    .lbd-style .bcard .num  { font-size: 28px; color: #f0f6fc; font-weight: 600; letter-spacing: -0.02em; margin: 4px 0 2px; font-variant-numeric: tabular-nums; }
+    .lbd-style .bcard .lim  { color: #6e7681; font-size: 12px; margin-bottom: 12px; }
+    .lbd-style .bcard .lim b { color: #8b949e; font-weight: 500; }
+    .lbd-style .bcard .bar  { height: 4px; background: #0d1117; border-radius: 3px; overflow: hidden; margin-bottom: 8px; }
+    .lbd-style .bcard .fill { height: 100%; border-radius: 3px; }
+    .lbd-style .bcard .spark    { margin-top: 4px; line-height: 0; }
+    .lbd-style .bcard .forecast { font-size: 11px; color: #8b949e; margin-top: 6px; display: flex; align-items: center; gap: 6px; }
+    .lbd-style .bcard .forecast .icon { width: 8px; height: 8px; border-radius: 50%; }
+    .lbd-style .bcard .forecast b { color: #f0f6fc; font-weight: 500; }
+
+    /* Where panel (carried from B, top-3 + rollup) */
+    .lbd-style .where {
+      background: #161b22; border: 1px solid #21262d; border-radius: 12px;
+      padding: 18px 20px; margin-bottom: 18px;
+    }
+    .lbd-style .where-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 16px; }
+    .lbd-style .where-head h2 { font-size: 14px; color: #f0f6fc; font-weight: 600; }
+    .lbd-style .where-head .sub { font-size: 11px; color: #8b949e; }
+
+    .lbd-style .proj-rail { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 14px; }
+    @media (max-width: 900px) { .lbd-style .proj-rail { grid-template-columns: 1fr; } }
+    .lbd-style .proj-card { background: #0d1117; border: 1px solid #21262d; border-radius: 10px; padding: 14px; position: relative; }
+    .lbd-style .proj-card.lead { border-color: #30363d; }
+    .lbd-style .proj-card .pname {
+      color: #ffa657; font-weight: 500; font-size: 14px; margin-bottom: 2px;
+      display: flex; justify-content: space-between; align-items: baseline;
+    }
+    .lbd-style .proj-card .pname .pct { color: #8b949e; font-size: 11px; font-weight: 400; }
+    .lbd-style .proj-card .ptok { font-size: 20px; color: #f0f6fc; font-weight: 600; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; margin-bottom: 4px; }
+    .lbd-style .proj-card .ptok .small { font-size: 11px; color: #6e7681; margin-left: 4px; font-weight: 400; }
+    .lbd-style .proj-card .pbar { height: 4px; background: #21262d; border-radius: 2px; overflow: hidden; margin-bottom: 10px; }
+    .lbd-style .proj-card .pbar .seg { height: 100%; display: inline-block; vertical-align: top; }
+    .lbd-style .proj-card .ag-list { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
+    .lbd-style .proj-card .ag {
+      display: grid; grid-template-columns: 1fr auto; gap: 8px;
+      align-items: center; font-size: 12px;
+    }
+    .lbd-style .proj-card .ag .swatch { width: 5px; height: 5px; border-radius: 50%; display: inline-block; margin-right: 6px; }
+    .lbd-style .proj-card .ag .n { color: #c9d1d9; }
+    .lbd-style .proj-card .ag .v { color: #8b949e; font-variant-numeric: tabular-nums; }
+
+    .lbd-style .proj-more { margin-top: 8px; border-top: 1px dashed #21262d; padding-top: 10px; }
+    .lbd-style .proj-more-head { font-size: 10px; color: #8b949e; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 6px; display: flex; justify-content: space-between; }
+    .lbd-style .proj-more-list { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px 16px; }
+    @media (max-width: 900px) { .lbd-style .proj-more-list { grid-template-columns: 1fr; } }
+    .lbd-style .proj-more-row { display: grid; grid-template-columns: 1fr 60px 36px; gap: 8px; align-items: center; padding: 4px 0; font-size: 12px; }
+    .lbd-style .proj-more-row .pn { color: #ffa657; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .lbd-style .proj-more-row .pv { color: #8b949e; font-variant-numeric: tabular-nums; text-align: right; }
+    .lbd-style .proj-more-row .ps { color: #6e7681; font-variant-numeric: tabular-nums; text-align: right; font-size: 10px; }
+
+    /* ── Diagnostics card ────────────────────────────────────────────── */
+    .lbd-style .diag {
+      background: #161b22; border: 1px solid #21262d; border-radius: 12px;
+      margin-bottom: 18px;
+      overflow: hidden;
+    }
+    .lbd-style .diag-tabs {
+      display: flex;
+      gap: 2px;
+      padding: 8px 8px 0 8px;
+      background: #0d1117;
+      border-bottom: 1px solid #21262d;
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+    .lbd-style .diag-tabs::-webkit-scrollbar { display: none; }
+    .lbd-style .diag-tab {
+      display: inline-flex; align-items: center; gap: 8px;
+      background: transparent;
+      border: 0;
+      color: #8b949e;
+      padding: 10px 14px 11px;
+      font: inherit; font-size: 12px;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -1px;
+      white-space: nowrap;
+      transition: color 0.15s, background 0.15s;
+    }
+    .lbd-style .diag-tab:hover { color: #f0f6fc; background: #161b22; }
+    .lbd-style .diag-tab.active {
+      color: #f0f6fc;
+      background: #161b22;
+      border-bottom-color: #58a6ff;
+    }
+    .lbd-style .diag-tab .ico { font-size: 13px; line-height: 1; }
+    .lbd-style .diag-tab .lbl { font-weight: 500; }
+    .lbd-style .diag-tab .tag {
+      padding: 1px 7px; border-radius: 10px;
+      font-size: 10px; font-weight: 500; letter-spacing: 0.02em;
+      background: #21262d; color: #c9d1d9;
+      font-variant-numeric: tabular-nums;
+    }
+    .lbd-style .diag-tab .tag.warn { background: rgba(210,153,34,0.22); color: #e3b341; }
+    .lbd-style .diag-tab .tag.crit { background: rgba(248,81,73,0.22);  color: #f85149; }
+    .lbd-style .diag-tab .tag.ok   { background: rgba(63,185,80,0.18);  color: #3fb950; }
+    .lbd-style .diag-tab .tag.info { background: rgba(88,166,255,0.18); color: #79c0ff; }
+    .lbd-style .diag-body {
+      padding: 18px 20px;
+      min-height: 360px;
+    }
+    .lbd-style .diag-body h4 {
+      font-size: 11px; color: #8b949e; text-transform: uppercase; letter-spacing: 0.04em;
+      font-weight: 500; margin-bottom: 8px;
+    }
+
+    /* Burn rate widget */
+    .lbd-style .burn-bucket {
+      padding: 12px 0;
+      border-bottom: 1px dashed #21262d;
+    }
+    .lbd-style .burn-bucket:last-of-type { border-bottom: none; }
+    .lbd-style .burn-bucket .top {
+      display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px;
+    }
+    .lbd-style .burn-bucket .bname { color: #c9d1d9; font-size: 13px; font-weight: 500; }
+    .lbd-style .burn-bucket .ratio {
+      font-size: 18px; font-variant-numeric: tabular-nums; font-weight: 600; letter-spacing: -0.01em;
+    }
+    .lbd-style .burn-bucket .ratio.ok   { color: #3fb950; }
+    .lbd-style .burn-bucket .ratio.warn { color: #e3b341; }
+    .lbd-style .burn-bucket .ratio.crit { color: #f85149; }
+    .lbd-style .burn-bucket .track {
+      position: relative;
+      height: 10px;
+      background: #0d1117;
+      border-radius: 5px;
+      overflow: hidden;
+      margin-bottom: 6px;
+    }
+    .lbd-style .burn-bucket .actual {
+      position: absolute; left: 0; top: 0; bottom: 0;
+      border-radius: 5px;
+    }
+    .lbd-style .burn-bucket .marker {
+      position: absolute; top: -3px; bottom: -3px;
+      width: 2px;
+      background: #c9d1d9;
+      box-shadow: 0 0 0 1px #0d1117;
+    }
+    .lbd-style .burn-bucket .marker::after {
+      content: 'sustainable';
+      position: absolute; top: -16px; left: -28px;
+      font-size: 9px; color: #8b949e; text-transform: uppercase; letter-spacing: 0.05em;
+      white-space: nowrap;
+    }
+    .lbd-style .burn-bucket .detail {
+      display: flex; justify-content: space-between; font-size: 11px; color: #8b949e;
+    }
+    .lbd-style .burn-bucket .detail b { color: #c9d1d9; font-weight: 500; }
+
+    .lbd-style .cumulative {
+      margin-top: 18px;
+      border-top: 1px solid #21262d;
+      padding-top: 14px;
+    }
+    .lbd-style .cumulative h4 { margin-bottom: 8px; }
+    .lbd-style .cumulative svg { width: 100%; height: 140px; display: block; }
+
+    /* Top sessions */
+    .lbd-style .topsess {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+    @media (max-width: 1000px) { .lbd-style .topsess { grid-template-columns: 1fr; } }
+    .lbd-style .topsess-list .row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 10px;
+      padding: 10px 0;
+      border-bottom: 1px solid #21262d;
+      align-items: center;
+    }
+    .lbd-style .topsess-list .row:last-child { border-bottom: none; }
+    .lbd-style .topsess-list .row.outlier {
+      background: linear-gradient(90deg, rgba(248,81,73,0.06), transparent);
+      margin: 0 -8px; padding-left: 8px; padding-right: 8px; border-radius: 4px;
+    }
+    .lbd-style .topsess-list .meta { font-size: 11px; color: #8b949e; }
+    .lbd-style .topsess-list .name { color: #ffa657; font-weight: 500; font-size: 13px; margin-bottom: 2px; }
+    .lbd-style .topsess-list .agents { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px; }
+    .lbd-style .topsess-list .tokens { font-size: 17px; color: #f0f6fc; font-weight: 600; font-variant-numeric: tabular-nums; text-align: right; }
+    .lbd-style .topsess-list .tokens .sub { font-size: 10px; color: #6e7681; font-weight: 400; display: block; margin-top: 2px; }
+    .lbd-style .outlier-flag {
+      display: inline-block; padding: 1px 6px; border-radius: 4px;
+      background: rgba(248,81,73,0.18); color: #f85149;
+      font-size: 10px; font-weight: 500;
+      margin-left: 6px;
+    }
+
+    .lbd-style .histo svg { width: 100%; height: 240px; display: block; }
+
+    /* Movers */
+    .lbd-style .movers-row {
+      display: grid;
+      grid-template-columns: 1fr 80px 80px 60px;
+      gap: 10px;
+      padding: 8px 0;
+      align-items: center;
+      border-bottom: 1px solid #21262d;
+      font-size: 12px;
+    }
+    .lbd-style .movers-row:last-child { border-bottom: none; }
+    .lbd-style .movers-row .nm { color: #c9d1d9; }
+    .lbd-style .movers-row .nm.proj { color: #ffa657; }
+    .lbd-style .movers-row .val { color: #8b949e; font-variant-numeric: tabular-nums; text-align: right; }
+    .lbd-style .movers-row .pre { color: #6e7681; font-variant-numeric: tabular-nums; text-align: right; }
+    .lbd-style .movers-row .delta { font-variant-numeric: tabular-nums; font-weight: 500; text-align: right; }
+    .lbd-style .movers-row .delta.up   { color: #f85149; }
+    .lbd-style .movers-row .delta.down { color: #3fb950; }
+    .lbd-style .movers-row .delta.flat { color: #8b949e; }
+    .lbd-style .movers-head {
+      display: grid;
+      grid-template-columns: 1fr 80px 80px 60px;
+      gap: 10px;
+      padding: 4px 0 8px;
+      font-size: 10px; color: #6e7681; text-transform: uppercase; letter-spacing: 0.05em;
+      border-bottom: 1px solid #21262d;
+    }
+    .lbd-style .movers-head .r { text-align: right; }
+    .lbd-style .mv-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+    }
+    @media (max-width: 1000px) { .lbd-style .mv-grid { grid-template-columns: 1fr; } }
+
+    /* Quadrant */
+    .lbd-style .quad-wrap {
+      display: grid;
+      grid-template-columns: 1fr 240px;
+      gap: 20px;
+    }
+    @media (max-width: 1000px) { .lbd-style .quad-wrap { grid-template-columns: 1fr; } }
+    .lbd-style .quad svg { width: 100%; height: 360px; display: block; }
+    .lbd-style .quad-legend ul {
+      list-style: none; margin: 0; padding: 0;
+      display: flex; flex-direction: column; gap: 10px;
+    }
+    .lbd-style .quad-legend li {
+      display: grid; grid-template-columns: 16px 1fr; gap: 8px;
+      font-size: 12px; align-items: flex-start;
+    }
+    .lbd-style .quad-legend .sw {
+      width: 10px; height: 10px; border-radius: 3px; margin-top: 3px;
+    }
+    .lbd-style .quad-legend .lbl { color: #f0f6fc; font-weight: 500; font-size: 12px; }
+    .lbd-style .quad-legend .desc { color: #8b949e; font-size: 11px; }
+    .lbd-style .quad-legend .count { color: #c9d1d9; font-size: 11px; font-variant-numeric: tabular-nums; margin-left: 4px; }
+
+    /* Efficiency */
+    .lbd-style .eff-row {
+      display: grid;
+      grid-template-columns: 140px 100px 1fr 80px;
+      gap: 12px;
+      align-items: center;
+      padding: 8px 0;
+      border-bottom: 1px solid #21262d;
+      font-size: 12px;
+    }
+    .lbd-style .eff-row:last-child { border-bottom: none; }
+    .lbd-style .eff-row .nm { color: #c9d1d9; }
+    .lbd-style .eff-row .rate { color: #f0f6fc; font-weight: 600; font-variant-numeric: tabular-nums; font-size: 14px; }
+    .lbd-style .eff-row .rate .u { font-size: 10px; color: #6e7681; font-weight: 400; margin-left: 3px; }
+    .lbd-style .eff-row .bar { height: 8px; background: #0d1117; border-radius: 4px; overflow: hidden; }
+    .lbd-style .eff-row .bar > i { display: block; height: 100%; }
+    .lbd-style .eff-row .meta { color: #8b949e; font-size: 11px; text-align: right; font-variant-numeric: tabular-nums; }
+    .lbd-style .eff-row.outlier .rate { color: #f85149; }
+    .lbd-style .eff-row.outlier .bar > i { background: linear-gradient(90deg,#b62324,#f85149) !important; }
+    .lbd-style .eff-head {
+      display: grid;
+      grid-template-columns: 140px 100px 1fr 80px;
+      gap: 12px;
+      padding: 4px 0 8px;
+      border-bottom: 1px solid #21262d;
+      font-size: 10px; color: #6e7681; text-transform: uppercase; letter-spacing: 0.05em;
+    }
+    .lbd-style .eff-head .r { text-align: right; }
+
+    /* Secondary row (daily chart + skills) — carried from B */
+    .lbd-style .row { display: grid; grid-template-columns: 2fr 1fr; gap: 12px; margin-bottom: 18px; }
+    @media (max-width: 1000px) { .lbd-style .row { grid-template-columns: 1fr; } }
+    .lbd-style .card { background: #161b22; border: 1px solid #21262d; border-radius: 10px; padding: 16px; }
+    .lbd-style .chart-container { position: relative; height: 240px; }
+    .lbd-style .h {
+      display: flex; justify-content: space-between; align-items: baseline;
+      margin-bottom: 12px;
+    }
+    .lbd-style .h .title { font-size: 12px; color: #8b949e; text-transform: uppercase; letter-spacing: 0.04em; font-weight: 500; }
+    .lbd-style .h .meta  { font-size: 11px; color: #6e7681; }
+
+    /* Sessions */
+    .lbd-style .session-row {
+      display: grid;
+      grid-template-columns: 100px 1.2fr 1.4fr 90px 100px 60px;
+      gap: 10px; align-items: center; padding: 8px 0;
+      border-bottom: 1px solid #1c2128; font-size: 12px;
+    }
+    .lbd-style .session-row:last-child { border-bottom: none; }
+    .lbd-style .session-row .time { color: #8b949e; }
+    .lbd-style .session-row .proj { color: #ffa657; font-weight: 500; }
+    .lbd-style .session-row .tok  { color: #c9d1d9; text-align: right; font-variant-numeric: tabular-nums; }
+    .lbd-style .session-row .dur  { color: #8b949e; text-align: right; font-variant-numeric: tabular-nums; }
+    .lbd-style .sessions-head {
+      display: grid;
+      grid-template-columns: 100px 1.2fr 1.4fr 90px 100px 60px;
+      gap: 10px; padding: 4px 0 8px;
+      border-bottom: 1px solid #21262d;
+      font-size: 10px; color: #6e7681; text-transform: uppercase; letter-spacing: 0.05em;
+    }
+    .lbd-style .sessions-head .r { text-align: right; }
+    .lbd-style .mini-bar { display: flex; height: 5px; border-radius: 3px; overflow: hidden; }
+
+    /* Skills mini card */
+    .lbd-style .skills-card {
+      display: flex; flex-direction: column;
+      max-height: 320px;
+    }
+    .lbd-style .skill-row {
+      display: grid;
+      grid-template-columns: 1fr 60px 40px 30px;
+      gap: 8px; padding: 6px 0; align-items: center;
+      border-bottom: 1px solid #1c2128; font-size: 11px;
+    }
+    .lbd-style .skill-row .sname { color: #c9d1d9; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .lbd-style .skill-row .sbar { height: 5px; background: #0d1117; border-radius: 3px; overflow: hidden; }
+    .lbd-style .skill-row .sbar > i { display: block; height: 100%; background: linear-gradient(90deg,#7e3bd6,#d2a8ff); }
+    .lbd-style .skill-row .adopt { color: #8b949e; font-variant-numeric: tabular-nums; text-align: right; font-size: 10px; }
+    .lbd-style .skill-row .adopt.low { color: #d29922; }
+    .lbd-style .skill-row .scount { color: #c9d1d9; font-variant-numeric: tabular-nums; text-align: right; font-weight: 500; }
+    .lbd-style .skills-scroll { overflow-y: auto; flex: 1; margin: 0 -4px; padding: 0 4px; scrollbar-width: thin; scrollbar-color: #30363d transparent; }
+    .lbd-style .skills-scroll::-webkit-scrollbar { width: 6px; }
+    .lbd-style .skills-scroll::-webkit-scrollbar-thumb { background: #30363d; border-radius: 3px; }
+  `;
+
+  // ── Diagnostic computations ─────────────────────────────────────────────
+
+  function bucketRatioCls(r) {
+    if (r >= 1.5) return 'crit';
+    if (r >= 1.0) return 'warn';
+    return 'ok';
+  }
+
+  function computeBurnRates(buckets) {
+    return {
+      h5:    { ...buckets.h5,    ratio: buckets.h5.limit    ? buckets.h5.value    / buckets.h5.limit    : 0, hours: 5   },
+      d7:    { ...buckets.d7,    ratio: buckets.d7.limit    ? buckets.d7.value    / buckets.d7.limit    : 0, hours: 168 },
+      son7d: { ...buckets.son7d, ratio: buckets.son7d.limit ? buckets.son7d.value / buckets.son7d.limit : 0, hours: 168 },
+    };
+  }
+
+  // Per-agent tokens-per-minute and total minutes (sessions where they appear)
+  function computeEfficiency(sessions) {
+    const out = {};
+    for (const s of sessions) {
+      const n = (s.agents || []).length || 1;
+      for (const a of (s.agents || [])) {
+        if (!out[a]) out[a] = { tokens: 0, minutes: 0, sessions: 0, modelMix: {} };
+        out[a].tokens  += s.total_tokens / n;
+        out[a].minutes += s.duration_minutes;
+        out[a].sessions += 1;
+        for (const [m, t] of Object.entries(s.model_split || {})) {
+          out[a].modelMix[m] = (out[a].modelMix[m] || 0) + (t / n);
+        }
+      }
+    }
+    const rows = Object.entries(out).map(([name, v]) => {
+      const tpm = v.minutes > 0 ? v.tokens / v.minutes : 0;
+      // primary model from authoritative source
+      const auth = window.DATA.by_agent[name];
+      const primary = auth ? auth.primary_model : null;
+      return { name, tokens: Math.round(v.tokens), minutes: Math.round(v.minutes), sessions: v.sessions, tpm, primary };
+    }).filter(r => r.minutes > 0);
+    // Outlier flag: > median + 2× MAD
+    const tpms = rows.map(r => r.tpm).sort((a,b) => a-b);
+    const median = tpms[Math.floor(tpms.length / 2)] || 0;
+    const mad = tpms.map(v => Math.abs(v - median)).sort((a,b) => a-b)[Math.floor(tpms.length/2)] || 0;
+    const threshold = median + 2 * mad;
+    for (const r of rows) r.outlier = r.tpm > threshold && r.tpm > median * 1.5;
+    rows.sort((a,b) => b.tpm - a.tpm);
+    return { rows, median, threshold };
+  }
+
+  // Top sessions + outlier detection
+  function computeTopSessions(sessions) {
+    const sorted = sessions.slice().sort((a,b) => b.total_tokens - a.total_tokens);
+    // Outlier: > median + 1.5 × IQR (using session totals)
+    const vals = sessions.map(s => s.total_tokens).sort((a,b) => a-b);
+    const q = (p) => vals[Math.floor((vals.length - 1) * p)] || 0;
+    const q1 = q(0.25), q3 = q(0.75), iqr = q3 - q1;
+    const upper = q3 + 1.5 * iqr;
+    for (const s of sorted) s._isOutlier = s.total_tokens > upper;
+    return { top: sorted.slice(0, 5), outlierCount: sorted.filter(s => s._isOutlier).length, upper };
+  }
+
+  // Movers — 7d vs prior 7d, both agents and projects
+  function computeMovers() {
+    const now = new Date();
+    const c7  = new Date(now.getTime() - 7  * 86400000);
+    const c14 = new Date(now.getTime() - 14 * 86400000);
+    const recent = window.DATA.sessions.filter(s => new Date(s.start_time) >= c7);
+    const prior  = window.DATA.sessions.filter(s => { const t = new Date(s.start_time); return t >= c14 && t < c7; });
+    const r = CP.reAggregate(recent, window.DATA.by_agent);
+    const p = CP.reAggregate(prior,  window.DATA.by_agent);
+
+    function dlt(cur, pre) {
+      if (pre === 0) return cur > 0 ? 999 : 0;
+      return Math.round((cur - pre) / pre * 100);
+    }
+
+    const agents = Object.keys(r.byAgent).filter(a => a !== 'general').map(a => {
+      const cur = r.byAgent[a].total_tokens;
+      const pre = (p.byAgent[a] && p.byAgent[a].total_tokens) || 0;
+      return { name: a, cur, pre, delta: dlt(cur, pre), model: r.byAgent[a].primary_model };
+    }).sort((a,b) => Math.abs(b.delta) - Math.abs(a.delta));
+
+    const projects = Object.keys(r.byProject).map(name => {
+      const cur = r.byProject[name].total_tokens;
+      const pre = (p.byProject[name] && p.byProject[name].total_tokens) || 0;
+      return { name, cur, pre, delta: dlt(cur, pre) };
+    }).sort((a,b) => Math.abs(b.delta) - Math.abs(a.delta));
+
+    const biggestUp = agents.filter(a => a.delta < 999 && a.delta > 0)
+      .concat(projects.filter(p => p.delta < 999 && p.delta > 0))
+      .sort((a,b) => b.delta - a.delta)[0];
+
+    return { agents, projects, biggestUp };
+  }
+
+  // Skill quadrant data
+  function computeQuadrant() {
+    const adopt = window.DATA.by_skill_adoption;
+    const points = Object.entries(adopt).map(([name, info]) => ({
+      name,
+      passed: info.times_passed,
+      invoked: info.times_invoked,
+      rate: info.adoption_rate,
+    }));
+    const passes  = points.map(p => p.passed).sort((a,b) => a-b);
+    const invokes = points.map(p => p.invoked).sort((a,b) => a-b);
+    const passedMed  = passes[Math.floor(passes.length/2)] || 0;
+    const invokedMed = invokes[Math.floor(invokes.length/2)] || 0;
+    // Classify quadrant: passed (x) vs invoked (y)
+    for (const p of points) {
+      const hp = p.passed  >= passedMed;
+      const hi = p.invoked >= invokedMed;
+      if (hp && hi) p.quad = 'workhorse';
+      else if (!hp && hi) p.quad = 'explicit';
+      else if (hp && !hi) p.quad = 'dead';
+      else p.quad = 'idle';
+    }
+    const counts = { workhorse: 0, explicit: 0, dead: 0, idle: 0 };
+    for (const p of points) counts[p.quad]++;
+    return { points, passedMed, invokedMed, counts };
+  }
+
+  // ── Renderers (carry-overs from B) ─────────────────────────────────────
+
+  function budgetCard(b, accent, sparkSeries) {
+    if (!b.limit) {
+      // No limit configured for this bucket — show raw value only, neutral fill.
+      return `
+        <div class="bcard" style="--accent:${accent}">
+          <div class="top">
+            <div class="name">${b.label}</div>
+            <div class="pill" style="font-size:10px">no limit</div>
+          </div>
+          <div class="num">${CP.fmtTokens(b.value)}</div>
+          <div class="lim">configure <b>--limits</b> to enable forecasting</div>
+          <div class="bar"><div class="fill" style="width:0%;background:#30363d"></div></div>
+          <div class="spark">${CP.sparkline(sparkSeries, { width: 220, height: 28, stroke: accent, fill: accent })}</div>
+          <div class="forecast"><span class="icon" style="background:#30363d"></span> <span class="dim">tracking only — limit not set</span></div>
+        </div>`;
+    }
+    const pct = Math.min(100, (b.value/b.limit)*100);
+    const fillCol = pct >= 80 ? PALETTE.danger : pct >= 60 ? PALETTE.warn : PALETTE.ok;
+    const remaining = (b.limit || 0) - b.value;
+    const windowH = b.label.includes('5-hour') ? 5 : 168;
+    const f = CP.forecastHit(b.value, b.limit, windowH);
+    let forecastTxt = '';
+    if (f && !f.hitNow) {
+      if (f.onPace) {
+        const days = Math.floor(f.hoursToHit / 24);
+        const hrs = Math.round(f.hoursToHit % 24);
+        forecastTxt = `On pace to hit limit in <b>${days >= 1 ? days+'d '+hrs+'h' : Math.round(f.hoursToHit)+'h'}</b>`;
+      } else {
+        forecastTxt = `<b>${CP.fmtTokens(remaining)}</b> remaining at current pace`;
+      }
+    } else if (f && f.hitNow) forecastTxt = `Limit reached`;
+    const dotColor = pct >= 80 ? PALETTE.danger : pct >= 60 ? PALETTE.warn : PALETTE.ok;
+    return `
+      <div class="bcard" style="--accent:${accent}">
+        <div class="top">
+          <div class="name">${b.label}</div>
+          <div class="pill" style="font-size:10px">${Math.round(pct)}%</div>
+        </div>
+        <div class="num">${CP.fmtTokens(b.value)}</div>
+        <div class="lim">of <b>${CP.fmtTokens(b.limit)}</b> · ${CP.fmtTokens(remaining)} left</div>
+        <div class="bar"><div class="fill" style="width:${pct}%;background:${fillCol}"></div></div>
+        <div class="spark">${CP.sparkline(sparkSeries, { width: 220, height: 28, stroke: accent, fill: accent })}</div>
+        <div class="forecast"><span class="icon" style="background:${dotColor}"></span> ${forecastTxt}</div>
+      </div>`;
+  }
+
+  function projectCard(name, info, totalProj) {
+    const pct = Math.round(info.total_tokens / totalProj * 100);
+    const projSessions = window.DATA.sessions.filter(s => s.project === name);
+    const filtered = CP.filterSessions(projSessions, '7d');
+    const projAgg = CP.reAggregate(filtered, window.DATA.by_agent);
+    const agents = Object.entries(projAgg.byAgent)
+      .filter(([n]) => n !== 'general')
+      .sort((a,b) => b[1].total_tokens - a[1].total_tokens)
+      .slice(0, 4);
+    const modelSplit = {};
+    projSessions.forEach(s => {
+      for (const [m, t] of Object.entries(s.model_split || {})) {
+        modelSplit[m] = (modelSplit[m] || 0) + t;
+      }
+    });
+    const modelTotal = Object.values(modelSplit).reduce((a,b)=>a+b,0) || 1;
+    const segs = Object.entries(modelSplit).map(([m, t]) =>
+      `<span class="seg" style="width:${(t/modelTotal*100).toFixed(1)}%;background:${CP.modelColor(m)}"></span>`).join('');
+    return `
+      <div class="proj-card">
+        <div class="pname">${name}<span class="pct">${pct}%</span></div>
+        <div class="ptok">${CP.fmtTokens(info.total_tokens)}<span class="small">${info.session_count} sessions</span></div>
+        <div class="pbar">${segs}</div>
+        <div class="ag-list">
+          ${agents.map(([n, i]) => `
+            <div class="ag">
+              <div class="n"><span class="swatch" style="background:${CP.modelColor(i.primary_model)}"></span>${n}</div>
+              <div class="v">${CP.fmtTokens(i.total_tokens)}</div>
+            </div>`).join('')}
+        </div>
+      </div>`;
+  }
+
+  function buildWhere(agg) {
+    const projects = Object.entries(agg.byProject).sort((a,b) => b[1].total_tokens - a[1].total_tokens);
+    const totalProj = projects.reduce((a, [, info]) => a + info.total_tokens, 0);
+    const TOP = 3;
+    const featured = projects.slice(0, TOP);
+    const rest = projects.slice(TOP);
+    const restTokens = rest.reduce((a, [, info]) => a + info.total_tokens, 0);
+    const restSessions = rest.reduce((a, [, info]) => a + info.session_count, 0);
+    const restPct = totalProj > 0 ? Math.round(restTokens / totalProj * 100) : 0;
+    return `
+      <div class="where">
+        <div class="where-head">
+          <div>
+            <h2>Where your tokens went</h2>
+            <div class="sub">Top ${featured.length} projects shown · ${projects.length} total</div>
+          </div>
+          <div class="sub num">${CP.fmtTokens(agg.totalTokens)} total · ${projects.length} projects</div>
+        </div>
+        <div class="proj-rail">${featured.map(([n, info]) => projectCard(n, info, totalProj)).join('')}</div>
+        ${rest.length > 0 ? `
+          <div class="proj-more">
+            <div class="proj-more-head">
+              <span>+ ${rest.length} more projects</span>
+              <span>${CP.fmtTokens(restTokens)} · ${restPct}% · ${restSessions} sessions</span>
+            </div>
+            <div class="proj-more-list">
+              ${rest.map(([n, info]) => {
+                const pct = totalProj > 0 ? Math.round(info.total_tokens / totalProj * 100) : 0;
+                return `<div class="proj-more-row">
+                  <div class="pn">${n}</div>
+                  <div class="pv">${CP.fmtTokens(info.total_tokens)}</div>
+                  <div class="ps">${pct}%</div>
+                </div>`;
+              }).join('')}
+            </div>
+          </div>` : ''}
+      </div>`;
+  }
+
+  // ── Tab renderers ─────────────────────────────────────────────────────
+
+  function tabBurnRate(diag, ctx) {
+    function bucket(b) {
+      if (!b.limit) {
+        return `
+          <div class="burn-bucket">
+            <div class="top">
+              <div class="bname">${b.label}</div>
+              <div class="ratio" style="color:#6e7681">—</div>
+            </div>
+            <div class="detail"><span class="dim">No limit configured. Run with <code>--limits</code> or set your plan limits to enable burn-rate tracking.</span><span>${CP.fmtTokens(b.value)} used</span></div>
+          </div>`;
+      }
+      const ratio = b.ratio;
+      const cls = bucketRatioCls(ratio);
+      const fillColor = cls === 'crit' ? '#f85149' : cls === 'warn' ? '#e3b341' : '#3fb950';
+      const rateNow = b.value / b.hours;
+      const sustainable = b.limit / b.hours;
+      return `
+        <div class="burn-bucket">
+          <div class="top">
+            <div class="bname">${b.label}</div>
+            <div class="ratio ${cls}">${ratio.toFixed(2)}×</div>
+          </div>
+          <div class="track">
+            <div class="actual" style="width:${Math.min(100, ratio*100)}%;background:${fillColor}"></div>
+            <div class="marker" style="left:${100 / Math.max(1.2, ratio + 0.2)}%"></div>
+          </div>
+          <div class="detail">
+            <span>burning <b>${CP.fmtTokens(Math.round(rateNow))}/hr</b> · sustainable <b>${CP.fmtTokens(Math.round(sustainable))}/hr</b></span>
+            <span>${CP.fmtTokens(b.value)} / ${CP.fmtTokens(b.limit)}</span>
+          </div>
+        </div>`;
+    }
+    // Cumulative spend curve over last 7d toward 7d limit (if configured)
+    const days = Object.keys(ctx.allAgg.byDay).sort().slice(-7);
+    const limit7d = window.LIMITS.limit_7d || null;
+    let running = 0;
+    const points = days.map(d => {
+      running += ctx.allAgg.byDay[d].total_tokens;
+      return { day: d, total: running };
+    });
+    const W = 700, H = 140, padL = 40, padR = 20, padT = 12, padB = 24;
+    const innerW = W - padL - padR, innerH = H - padT - padB;
+    const finalTotal = points.length ? points[points.length - 1].total : 0;
+    const maxY = Math.max(limit7d || 0, finalTotal) * 1.05 || 1;
+    const xAt = i => padL + (i / Math.max(1, points.length - 1)) * innerW;
+    const yAt = v => padT + (1 - v / maxY) * innerH;
+    const path = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${xAt(i).toFixed(1)} ${yAt(p.total).toFixed(1)}`).join(' ');
+    const lastX = points.length ? xAt(points.length - 1) : padL;
+    const lastY = points.length ? yAt(finalTotal) : padT + innerH;
+    const limitLine = limit7d ? `
+      <line x1="${padL}" x2="${W - padR}" y1="${yAt(limit7d)}" y2="${yAt(limit7d)}" stroke="#f85149" stroke-dasharray="3 3" stroke-width="1"/>
+      <text x="${W - padR}" y="${yAt(limit7d) - 4}" fill="#f85149" font-size="9" text-anchor="end">7-day limit ${CP.fmtTokens(limit7d)}</text>
+    ` : '';
+
+    return `
+      <h4>Burn rate per budget bucket</h4>
+      ${bucket(ctx.burn.h5)}
+      ${bucket(ctx.burn.d7)}
+      ${bucket(ctx.burn.son7d)}
+
+      <div class="cumulative">
+        <h4>Cumulative 7-day spend · projected against limit</h4>
+        <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+          ${limitLine}
+          <!-- area under curve -->
+          <path d="${path} L ${xAt(points.length - 1)} ${padT + innerH} L ${padL} ${padT + innerH} Z" fill="#58a6ff" fill-opacity="0.12"/>
+          <!-- line -->
+          <path d="${path}" fill="none" stroke="#58a6ff" stroke-width="1.5" stroke-linejoin="round"/>
+          <!-- last dot + label -->
+          <circle cx="${lastX}" cy="${lastY}" r="3" fill="#58a6ff"/>
+          <text x="${lastX - 6}" y="${lastY - 6}" fill="#c9d1d9" font-size="10" text-anchor="end">${CP.fmtTokens(finalTotal)}</text>
+          <!-- x-axis labels -->
+          ${points.map((p, i) => `
+            <text x="${xAt(i)}" y="${H - 6}" fill="#6e7681" font-size="9" text-anchor="middle">${CP.fmtDay(p.day)}</text>
+          `).join('')}
+          <!-- y-axis label -->
+          <text x="6" y="${padT + 8}" fill="#6e7681" font-size="9">${CP.fmtTokens(maxY)}</text>
+          <text x="6" y="${padT + innerH}" fill="#6e7681" font-size="9">0</text>
+        </svg>
+      </div>`;
+  }
+
+  function tabTopSessions(diag, ctx) {
+    const { top, outlierCount, upper } = ctx.topSessions;
+    // Histogram bins
+    const bins = 16;
+    const vals = ctx.sessions.map(s => s.total_tokens);
+    const min = 0, max = Math.max(...vals, 1);
+    const binSize = max / bins;
+    const histo = new Array(bins).fill(0);
+    for (const v of vals) {
+      const i = Math.min(bins - 1, Math.floor(v / binSize));
+      histo[i]++;
+    }
+    const histMax = Math.max(...histo);
+    const W = 360, H = 240, padL = 24, padR = 12, padT = 12, padB = 30;
+    const innerW = W - padL - padR, innerH = H - padT - padB;
+    const upperX = padL + (upper / max) * innerW;
+
+    return `
+      <div class="topsess">
+        <div class="topsess-list">
+          <h4>Top 5 sessions · last 7 days</h4>
+          ${top.map(s => {
+            const dt = new Date(s.start_time);
+            const timeStr = dt.toLocaleString(undefined, { weekday:'short', month:'short', day:'numeric', hour:'numeric', minute:'2-digit' });
+            const agents = (s.agents || []).map(a => `<span class="chip">${a}</span>`).join(' ');
+            return `
+              <div class="row ${s._isOutlier ? 'outlier' : ''}">
+                <div>
+                  <div class="name">${s.project} ${s._isOutlier ? '<span class="outlier-flag">outlier</span>' : ''}</div>
+                  <div class="meta">${timeStr} · ${CP.fmtDuration(s.duration_minutes)}</div>
+                  <div class="agents">${agents}</div>
+                </div>
+                <div class="tokens">${CP.fmtTokens(s.total_tokens)}<span class="sub">${Math.round(s.total_tokens / s.duration_minutes)} tok/min</span></div>
+              </div>`;
+          }).join('')}
+        </div>
+        <div class="histo">
+          <h4>Session size distribution${outlierCount ? ' · <span style="color:#f85149">' + outlierCount + ' outlier' + (outlierCount === 1 ? '' : 's') + '</span>' : ''}</h4>
+          <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+            ${histo.map((c, i) => {
+              const x = padL + (i / bins) * innerW;
+              const w = (innerW / bins) * 0.86;
+              const y = padT + (1 - c / histMax) * innerH;
+              const h = (c / histMax) * innerH;
+              const binStart = i * binSize;
+              const isOutlierBin = binStart >= upper;
+              return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" fill="${isOutlierBin ? '#f85149' : '#58a6ff'}" opacity="${c > 0 ? 0.85 : 0.2}" rx="1"/>`;
+            }).join('')}
+            <!-- outlier threshold -->
+            <line x1="${upperX}" x2="${upperX}" y1="${padT}" y2="${padT + innerH}" stroke="#f85149" stroke-dasharray="3 3" stroke-width="1"/>
+            <text x="${upperX + 4}" y="${padT + 10}" fill="#f85149" font-size="9">outlier ≥ ${CP.fmtTokens(upper)}</text>
+            <!-- axis labels -->
+            <text x="${padL}" y="${H - 8}" fill="#6e7681" font-size="9">0</text>
+            <text x="${W - padR}" y="${H - 8}" fill="#6e7681" font-size="9" text-anchor="end">${CP.fmtTokens(max)}</text>
+            <text x="${(padL + W - padR) / 2}" y="${H - 8}" fill="#6e7681" font-size="9" text-anchor="middle">session size (tokens)</text>
+          </svg>
+        </div>
+      </div>`;
+  }
+
+  function tabMovers(diag, ctx) {
+    function dlt(d) {
+      const cls = d >= 999 ? 'up' : d > 0 ? 'up' : d < 0 ? 'down' : 'flat';
+      const txt = d >= 999 ? 'new' : `${d > 0 ? '+' : ''}${d}%`;
+      return `<div class="delta ${cls}">${txt}</div>`;
+    }
+    const a = ctx.movers.agents.slice(0, 7);
+    const p = ctx.movers.projects.slice(0, 7);
+    return `
+      <div class="mv-grid">
+        <div>
+          <h4>Agents · 7d vs prior 7d</h4>
+          <div class="movers-head">
+            <div>Agent</div><div class="r">7d</div><div class="r">prior 7d</div><div class="r">Δ</div>
+          </div>
+          ${a.map(row => `
+            <div class="movers-row">
+              <div class="nm">
+                <span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:${CP.modelColor(row.model)};margin-right:6px"></span>
+                ${row.name}
+              </div>
+              <div class="val">${CP.fmtTokens(row.cur)}</div>
+              <div class="pre">${CP.fmtTokens(row.pre)}</div>
+              ${dlt(row.delta)}
+            </div>
+          `).join('')}
+        </div>
+        <div>
+          <h4>Projects · 7d vs prior 7d</h4>
+          <div class="movers-head">
+            <div>Project</div><div class="r">7d</div><div class="r">prior 7d</div><div class="r">Δ</div>
+          </div>
+          ${p.map(row => `
+            <div class="movers-row">
+              <div class="nm proj">${row.name}</div>
+              <div class="val">${CP.fmtTokens(row.cur)}</div>
+              <div class="pre">${CP.fmtTokens(row.pre)}</div>
+              ${dlt(row.delta)}
+            </div>
+          `).join('')}
+        </div>
+      </div>`;
+  }
+
+  function tabQuadrant(diag, ctx) {
+    const q = ctx.quadrant;
+    const W = 520, H = 360, padL = 36, padR = 100, padT = 18, padB = 32;
+    const innerW = W - padL - padR, innerH = H - padT - padB;
+    const maxX = Math.max(...q.points.map(p => p.passed), 5);
+    const maxY = Math.max(...q.points.map(p => p.invoked), 5);
+    const xAt = v => padL + (v / maxX) * innerW;
+    const yAt = v => padT + (1 - v / maxY) * innerH;
+    const midX = xAt(q.passedMed);
+    const midY = yAt(q.invokedMed);
+
+    const colors = {
+      workhorse: '#3fb950',
+      explicit:  '#58a6ff',
+      dead:      '#f85149',
+      idle:      '#6e7681',
+    };
+
+    // Tile fills (subtle)
+    const tiles = [
+      // top-left: explicit
+      `<rect x="${padL}" y="${padT}" width="${midX - padL}" height="${midY - padT}" fill="${colors.explicit}" opacity="0.05"/>`,
+      // top-right: workhorse
+      `<rect x="${midX}" y="${padT}" width="${(padL + innerW) - midX}" height="${midY - padT}" fill="${colors.workhorse}" opacity="0.06"/>`,
+      // bottom-left: idle
+      `<rect x="${padL}" y="${midY}" width="${midX - padL}" height="${(padT + innerH) - midY}" fill="${colors.idle}" opacity="0.04"/>`,
+      // bottom-right: dead
+      `<rect x="${midX}" y="${midY}" width="${(padL + innerW) - midX}" height="${(padT + innerH) - midY}" fill="${colors.dead}" opacity="0.07"/>`,
+    ].join('');
+
+    // Labels in quadrants
+    const labels = `
+      <text x="${midX - 6}" y="${padT + 14}" fill="${colors.explicit}" font-size="10" text-anchor="end" font-weight="500">EXPLICIT</text>
+      <text x="${midX + 6}" y="${padT + 14}" fill="${colors.workhorse}" font-size="10" text-anchor="start" font-weight="500">WORKHORSE</text>
+      <text x="${midX - 6}" y="${padT + innerH - 6}" fill="${colors.idle}" font-size="10" text-anchor="end" font-weight="500">IDLE</text>
+      <text x="${midX + 6}" y="${padT + innerH - 6}" fill="${colors.dead}" font-size="10" text-anchor="start" font-weight="500">DEAD</text>
+    `;
+
+    // Quadrant divider lines
+    const lines = `
+      <line x1="${midX}" x2="${midX}" y1="${padT}" y2="${padT + innerH}" stroke="#21262d" stroke-dasharray="2 3"/>
+      <line x1="${padL}" x2="${padL + innerW}" y1="${midY}" y2="${midY}" stroke="#21262d" stroke-dasharray="2 3"/>
+    `;
+
+    // Axes
+    const axes = `
+      <line x1="${padL}" x2="${padL}"          y1="${padT}" y2="${padT + innerH}" stroke="#30363d"/>
+      <line x1="${padL}" x2="${padL + innerW}" y1="${padT + innerH}" y2="${padT + innerH}" stroke="#30363d"/>
+      <text x="${padL + innerW / 2}" y="${H - 6}" fill="#8b949e" font-size="10" text-anchor="middle">times passed by Claude →</text>
+      <text x="-${padT + innerH / 2}" y="12" fill="#8b949e" font-size="10" text-anchor="middle" transform="rotate(-90)">times invoked →</text>
+    `;
+
+    // Dots (label workhorses + dead + new explicits)
+    const dots = q.points.map(p => {
+      const r = 4 + Math.sqrt(Math.max(1, p.invoked)) * 0.8;
+      const label = ['workhorse','dead','explicit'].includes(p.quad);
+      return `
+        <g>
+          <circle cx="${xAt(p.passed)}" cy="${yAt(p.invoked)}" r="${r}" fill="${colors[p.quad]}" fill-opacity="0.65" stroke="${colors[p.quad]}" stroke-width="0.5">
+            <title>${p.name} · passed ${p.passed}, invoked ${p.invoked} (${Math.round(p.rate*100)}%)</title>
+          </circle>
+          ${label ? `<text x="${xAt(p.passed) + r + 3}" y="${yAt(p.invoked) + 3}" fill="#c9d1d9" font-size="9">${p.name}</text>` : ''}
+        </g>`;
+    }).join('');
+
+    const legend = `
+      <ul>
+        <li><div class="sw" style="background:${colors.workhorse}"></div>
+            <div><span class="lbl">Workhorses<span class="count">${q.counts.workhorse}</span></span><div class="desc">High pass × high invoke. The skills users rely on.</div></div></li>
+        <li><div class="sw" style="background:${colors.dead}"></div>
+            <div><span class="lbl">Dead skills<span class="count">${q.counts.dead}</span></span><div class="desc">Often passed but rarely invoked. Description likely needs sharper triggers.</div></div></li>
+        <li><div class="sw" style="background:${colors.explicit}"></div>
+            <div><span class="lbl">Explicit<span class="count">${q.counts.explicit}</span></span><div class="desc">Invoked even when not surfaced. Strong recall.</div></div></li>
+        <li><div class="sw" style="background:${colors.idle}"></div>
+            <div><span class="lbl">Idle<span class="count">${q.counts.idle}</span></span><div class="desc">Low signal. Candidates for review or removal.</div></div></li>
+      </ul>`;
+
+    return `
+      <h4>Skill adoption quadrant</h4>
+      <div class="quad-wrap">
+        <div class="quad">
+          <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">
+            ${tiles}
+            ${lines}
+            ${labels}
+            ${axes}
+            ${dots}
+          </svg>
+        </div>
+        <div class="quad-legend">${legend}</div>
+      </div>`;
+  }
+
+  function tabEfficiency(diag, ctx) {
+    const eff = ctx.efficiency;
+    const max = Math.max(1, ...eff.rows.map(r => r.tpm));
+    return `
+      <h4>Tokens / minute by agent <span class="dim" style="font-weight:400;text-transform:none;letter-spacing:0">· flags agents burning &gt; median + 2 MAD</span></h4>
+      <div class="eff-head">
+        <div>Agent</div>
+        <div class="r">Tokens / min</div>
+        <div>Share</div>
+        <div class="r">Sessions</div>
+      </div>
+      ${eff.rows.map(r => {
+        const w = (r.tpm / max) * 100;
+        const gradient = r.outlier
+          ? 'linear-gradient(90deg,#b62324,#f85149)'
+          : `linear-gradient(90deg,${CP.modelColor(r.primary)}80,${CP.modelColor(r.primary)})`;
+        return `
+          <div class="eff-row ${r.outlier ? 'outlier' : ''}">
+            <div class="nm">
+              <span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:${CP.modelColor(r.primary)};margin-right:6px"></span>
+              ${r.name}${r.outlier ? '<span class="outlier-flag">hot</span>' : ''}
+            </div>
+            <div class="rate">${Math.round(r.tpm).toLocaleString()}<span class="u">tok/min</span></div>
+            <div class="bar"><i style="width:${w}%;background:${gradient}"></i></div>
+            <div class="meta">${r.sessions} · ${CP.fmtDuration(r.minutes)}</div>
+          </div>`;
+      }).join('')}`;
+  }
+
+  // ── Tab framework ─────────────────────────────────────────────────────
+
+  const TAB_DEFS = [
+    { id: 'burn',       icon: '🔥', label: 'Burn rate',  build: tabBurnRate },
+    { id: 'sessions',   icon: '📍', label: 'Top sessions', build: tabTopSessions },
+    { id: 'movers',     icon: '🔄', label: 'Movers',     build: tabMovers },
+    { id: 'quadrant',   icon: '🎯', label: 'Skills',     build: tabQuadrant },
+    { id: 'efficiency', icon: '⚡', label: 'Efficiency', build: tabEfficiency },
+  ];
+
+  function tagFor(id, ctx) {
+    if (id === 'burn') {
+      // Only consider buckets with a configured limit.
+      const ratios = [ctx.burn.h5, ctx.burn.d7, ctx.burn.son7d]
+        .filter(b => b.limit).map(b => b.ratio);
+      if (ratios.length === 0) return { cls: '', text: '' };
+      const worst = Math.max(...ratios);
+      const cls = worst >= 1.5 ? 'crit' : worst >= 1.0 ? 'warn' : 'ok';
+      return { cls, text: worst.toFixed(2) + '×' };
+    }
+    if (id === 'sessions') {
+      const n = ctx.topSessions.outlierCount;
+      return n > 0
+        ? { cls: 'warn', text: n + ' outlier' + (n === 1 ? '' : 's') }
+        : { cls: '', text: '' };
+    }
+    if (id === 'movers') {
+      const biggest = ctx.movers.biggestUp;
+      if (!biggest || biggest.delta < 25) return { cls: '', text: '' };
+      const cls = biggest.delta >= 75 ? 'crit' : 'warn';
+      return { cls, text: '+' + biggest.delta + '%' };
+    }
+    if (id === 'quadrant') {
+      const n = ctx.quadrant.counts.dead;
+      return n > 0 ? { cls: 'warn', text: n + ' dead' } : { cls: '', text: '' };
+    }
+    if (id === 'efficiency') {
+      const hot = ctx.efficiency.rows.filter(r => r.outlier).length;
+      return hot > 0 ? { cls: 'warn', text: hot + ' hot' } : { cls: '', text: '' };
+    }
+    return { cls: '', text: '' };
+  }
+
+  // ── Alert summary line ────────────────────────────────────────────────
+  function alertSummary(ctx) {
+    const parts = [];
+    let severity = 'ok';
+
+    const hasLimits = !!(window.LIMITS.limit_5h || window.LIMITS.limit_7d || window.LIMITS.limit_sonnet_7d);
+
+    // Worst bucket forecast (only when limits exist)
+    if (hasLimits) {
+      const buckets = [
+        { name: '5-hour rolling', b: ctx.burn.h5,    hrs: 5   },
+        { name: '7-day rolling',  b: ctx.burn.d7,    hrs: 168 },
+        { name: 'Sonnet · 7d',    b: ctx.burn.son7d, hrs: 168 },
+      ].filter(x => x.b.limit);
+      const worst = buckets.map(x => ({
+        ...x,
+        f: CP.forecastHit(x.b.value, x.b.limit, x.hrs)
+      })).filter(x => x.f && x.f.onPace && !x.f.hitNow)
+        .sort((a, b) => a.f.hoursToHit - b.f.hoursToHit)[0];
+      if (worst) {
+        const days = Math.floor(worst.f.hoursToHit / 24);
+        const hrs = Math.round(worst.f.hoursToHit % 24);
+        parts.push(`<span class="seg"><b>${worst.name}</b> hits limit in <b>${days >= 1 ? days+'d '+hrs+'h' : Math.round(worst.f.hoursToHit)+'h'}</b></span>`);
+        severity = worst.f.hoursToHit < 24 ? 'crit' : 'warn';
+      }
+    }
+
+    // Biggest mover
+    const big = ctx.movers.biggestUp;
+    if (big && big.delta >= 25 && big.delta < 999) {
+      parts.push(`<span class="seg"><b>${big.name}</b> ${big.delta > 0 ? '+' : ''}${big.delta}% w/w</span>`);
+      if (big.delta >= 75 && severity === 'ok') severity = 'warn';
+    }
+
+    // Outliers today
+    const n = ctx.topSessions.outlierCount;
+    if (n > 0) {
+      parts.push(`<span class="seg"><b>${n}</b> outlier session${n === 1 ? '' : 's'}</span>`);
+      if (severity === 'ok') severity = 'warn';
+    }
+
+    if (parts.length === 0) {
+      const msg = hasLimits
+        ? 'All buckets healthy · no notable movers · no outlier sessions'
+        : 'No budget limits configured · pass <code>--limits</code> to enable pace tracking';
+      parts.push(`<span class="seg">${msg}</span>`);
+    }
+
+    const icon = severity === 'crit' ? '!' : severity === 'warn' ? '⚠' : '✓';
+    const joined = parts.join('<span class="sep">·</span>');
+    return `
+      <div class="alert-line ${severity}">
+        <span class="ico">${icon}</span>
+        ${joined}
+      </div>`;
+  }
+
+  // ── Main render ───────────────────────────────────────────────────────
+  window.renderLayoutBDiag = function renderLayoutBDiag(root) {
+    if (!document.getElementById('lbd-css')) {
+      const style = document.createElement('style');
+      style.id = 'lbd-css';
+      style.textContent = css;
+      document.head.appendChild(style);
+    }
+    root.classList.add('lbd-style');
+
+    const state = { period: '7d', tab: 'burn', skill: { q: '', sort: 'use' } };
+
+    function compute() {
+      const sessions = CP.filterSessions(window.DATA.sessions, state.period);
+      const agg = CP.reAggregate(sessions, window.DATA.by_agent);
+      const buckets = CP.computeBuckets(window.DATA.sessions, window.LIMITS);
+      const allAgg = CP.reAggregate(window.DATA.sessions, window.DATA.by_agent);
+      return {
+        sessions, agg, buckets, allAgg,
+        burn: computeBurnRates(buckets),
+        topSessions: computeTopSessions(CP.filterSessions(window.DATA.sessions, '7d')),
+        movers: computeMovers(),
+        efficiency: computeEfficiency(CP.filterSessions(window.DATA.sessions, '7d')),
+        quadrant: computeQuadrant(),
+      };
+    }
+
+    function periodTabs() {
+      return `<div class="period-tabs" id="lbd-periods">
+        ${['5h','24h','7d','30d','all'].map(p => `
+          <button data-period="${p}" class="${p === state.period ? 'active' : ''}">${p === 'all' ? 'All' : p}</button>
+        `).join('')}
+      </div>`;
+    }
+
+    function diagCard(ctx) {
+      const tabs = TAB_DEFS.map(t => {
+        const tag = tagFor(t.id, ctx);
+        const tagHtml = tag.text ? `<span class="tag ${tag.cls}">${tag.text}</span>` : '';
+        return `
+          <button class="diag-tab ${t.id === state.tab ? 'active' : ''}" data-tab="${t.id}">
+            <span class="ico">${t.icon}</span>
+            <span class="lbl">${t.label}</span>
+            ${tagHtml}
+          </button>`;
+      }).join('');
+
+      const active = TAB_DEFS.find(t => t.id === state.tab) || TAB_DEFS[0];
+      const body = active.build(null, ctx);
+
+      return `
+        <div class="diag">
+          <div class="diag-tabs" role="tablist">${tabs}</div>
+          <div class="diag-body">${body}</div>
+        </div>`;
+    }
+
+    function secondary(agg) {
+      const adoptAll = window.DATA.by_skill_adoption;
+      const allSkills = Object.entries(window.DATA.by_skill).map(([name, info]) => {
+        const a = adoptAll[name];
+        return {
+          name,
+          invocations: info.invocation_count,
+          passed: a ? a.times_passed : 0,
+          rate: a ? a.adoption_rate : null,
+        };
+      });
+      let skills = allSkills.slice();
+      skills.sort((a, b) => b.invocations - a.invocations);
+      const max = allSkills.reduce((m, s) => Math.max(m, s.invocations), 1);
+
+      return `
+        <div class="row">
+          <div class="card">
+            <div class="h"><div class="title">Daily tokens by model</div><div class="meta">last 7 days · stacked</div></div>
+            <div class="chart-container"><canvas id="lbd-daily"></canvas></div>
+          </div>
+          <div class="card skills-card">
+            <div class="h"><div class="title">Skills</div><div class="meta">${allSkills.length} installed</div></div>
+            <div class="skills-scroll">
+              ${skills.map(s => {
+                const rate = s.rate != null ? Math.round(s.rate * 100) : null;
+                const rateCls = rate != null && rate < 50 ? 'low' : '';
+                return `
+                  <div class="skill-row">
+                    <div class="sname">${s.name}</div>
+                    <div class="sbar"><i style="width:${s.invocations/max*100}%"></i></div>
+                    <div class="adopt ${rateCls}">${rate != null ? rate + '%' : '—'}</div>
+                    <div class="scount">${s.invocations}</div>
+                  </div>`;
+              }).join('')}
+            </div>
+          </div>
+        </div>`;
+    }
+
+    function buildSessions(sessions) {
+      const list = sessions.slice().sort((a,b) => new Date(b.start_time) - new Date(a.start_time)).slice(0, 12);
+      return `
+        <div class="card">
+          <div class="h"><div class="title">Recent sessions</div><div class="meta">${sessions.length} in window · 12 shown</div></div>
+          <div class="sessions-head">
+            <div>Time</div><div>Project</div><div>Agents</div>
+            <div class="r">Tokens</div><div>Split</div><div class="r">Dur</div>
+          </div>
+          ${list.map(s => {
+            const split = s.model_split || {};
+            const splitTotal = Object.values(split).reduce((a,b) => a+b, 0) || 1;
+            const parts = Object.entries(split).map(([m, t]) =>
+              `<div style="width:${(t/splitTotal*100).toFixed(1)}%;background:${CP.modelColor(m)}"></div>`).join('');
+            const agents = (s.agents || []).map(a => `<span class="chip">${a}</span>`).join(' ');
+            return `
+              <div class="session-row">
+                <div class="time">${CP.fmtRelTime(s.start_time)}</div>
+                <div class="proj">${s.project}</div>
+                <div>${agents}</div>
+                <div class="tok">${CP.fmtTokens(s.total_tokens)}</div>
+                <div><div class="mini-bar">${parts}</div></div>
+                <div class="dur">${CP.fmtDuration(s.duration_minutes)}</div>
+              </div>`;
+          }).join('')}
+        </div>`;
+    }
+
+    function hero(buckets, allAgg) {
+      const seriesTotal  = CP.modelSeries(allAgg.byDay, null, 7);
+      const seriesSonnet = CP.modelSeries(allAgg.byDay, 'sonnet', 7);
+      const series5h     = seriesTotal.slice(-5).map(v => Math.round(v / 4));
+      return `<div class="budgets">
+        ${budgetCard(buckets.h5,    PALETTE.info,   series5h)}
+        ${budgetCard(buckets.d7,    PALETTE.accent, seriesTotal)}
+        ${budgetCard(buckets.son7d, PALETTE.sonnet, seriesSonnet)}
+      </div>`;
+    }
+
+    function render() {
+      const ctx = compute();
+      root.innerHTML = `
+        <div class="pagehead">
+          <div>
+            <h1>Where your tokens went <span>· this ${state.period === 'all' ? 'all time' : state.period}</span></h1>
+            <div class="sub">Live read of session JSONL · generated ${new Date(window.GENERATED_AT).toLocaleString()}</div>
+          </div>
+          <div class="pagehead-right">${periodTabs()}</div>
+        </div>
+        ${alertSummary(ctx)}
+        ${hero(ctx.buckets, ctx.allAgg)}
+        ${buildWhere(ctx.agg)}
+        ${diagCard(ctx)}
+        ${secondary(ctx.agg)}
+        ${buildSessions(ctx.sessions)}
+      `;
+      drawCharts(ctx);
+      wire();
+    }
+
+    function drawCharts({ agg }) {
+      CP.destroyChartsByPrefix('lbd-');
+      const days = Object.keys(agg.byDay).sort().slice(-7);
+      const allModels = new Set();
+      days.forEach(d => Object.keys(agg.byDay[d].by_model).forEach(m => allModels.add(m)));
+      const ordered = ['opus','sonnet','haiku'].filter(m => allModels.has(m));
+      const datasets = ordered.map(m => ({
+        label: m,
+        data: days.map(d => agg.byDay[d].by_model[m] || 0),
+        backgroundColor: CP.modelColor(m),
+        borderRadius: 3,
+        maxBarThickness: 36,
+      }));
+      const daily = new Chart(document.getElementById('lbd-daily'), {
+        type: 'bar',
+        data: { labels: days.map(d => CP.fmtDay(d)), datasets },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          scales: {
+            x: { stacked: true, grid: { display: false } },
+            y: { stacked: true, grid: { color: PALETTE.grid }, ticks: { callback: v => CP.fmtTokens(v) } },
+          },
+          plugins: {
+            legend: { position: 'bottom', labels: { padding: 14, usePointStyle: true, pointStyle: 'circle', boxWidth: 6, boxHeight: 6 } },
+            tooltip: { callbacks: { label: c => `${c.dataset.label}: ${CP.fmtTokens(c.parsed.y)}` } }
+          }
+        }
+      });
+      CP.registerChart('lbd-daily', daily);
+    }
+
+    function wire() {
+      root.querySelectorAll('#lbd-periods button').forEach(b => {
+        b.addEventListener('click', () => { state.period = b.dataset.period; render(); });
+      });
+      root.querySelectorAll('.diag-tab').forEach(b => {
+        b.addEventListener('click', () => { state.tab = b.dataset.tab; render(); });
+      });
+    }
+
+    render();
+  };
+})();
+
+</script>
+
+<!-- Bootstrap -->
+<script>
+  CP.applyChartDefaults();
+  window.renderLayoutBDiag(document.getElementById('lbd-root'));
+</script>
+
 </body>
 </html>
