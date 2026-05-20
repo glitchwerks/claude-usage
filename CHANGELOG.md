@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.2] - 2026-05-20
+
+### Fixed
+
+- **Wheel install: `TemplateNotFound` crash on `dashboard` command** (#138).
+  The renderer used `jinja2.FileSystemLoader` pointed at a
+  `Path(__file__).parent`-relative path.  In an editable / source-tree
+  install this works because the file is on disk at the expected location.
+  In a wheel install the path resolves to the site-packages directory,
+  where `templates/` does not exist as a loose filesystem subtree.
+  Fix: replace `FileSystemLoader` with `PackageLoader("claude_prospector",
+  "templates")`, which resolves the template through Python's package
+  resource system (`importlib.resources`) and works correctly for both
+  editable and wheel installs.
+- Added a `wheel-smoke` CI job to `release.yml` that installs the built
+  wheel into a fresh venv and runs `python -m claude_prospector dashboard`
+  against a fixture before publishing.  This gate would have caught the
+  0.8.0/0.8.1 regression at release time.
+
 ## [0.8.1] - 2026-05-19
 
 ### Changed

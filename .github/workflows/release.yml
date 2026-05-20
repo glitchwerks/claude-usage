@@ -35,11 +35,64 @@ jobs:
           path: dist/
 
   # ---------------------------------------------------------------------------
+  # Wheel smoke test — install the built wheel into a fresh venv and confirm
+  # the dashboard command renders without errors.  Runs after build and before
+  # publish so a broken wheel blocks the release.  Uses a tiny fixture
+  # (tests/fixtures/session_summaries/dashboard_baseline_input) so the test
+  # does not need real ~/.claude data.
+  # ---------------------------------------------------------------------------
+  wheel-smoke:
+    name: Wheel smoke test
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4
+        with:
+          name: dist
+          path: dist/
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      # Install the wheel into a clean venv — NOT an editable/source install.
+      # This mirrors what end-users get from `pip install claude-prospector`.
+      - name: Install wheel into a fresh venv
+        run: |
+          python -m venv .smoke-venv
+          .smoke-venv/bin/pip install --quiet dist/claude_prospector-*.whl
+
+      # Verify the template shipped in the wheel by checking that the
+      # templates/ directory exists inside the installed package.
+      - name: Assert templates/ directory exists in the installed wheel
+        run: |
+          pkg_dir=$(.smoke-venv/bin/python -c \
+            "import claude_prospector, pathlib; \
+             print(pathlib.Path(claude_prospector.__file__).parent)")
+          if [ ! -f "${pkg_dir}/templates/dashboard.html" ]; then
+            echo "ERROR: templates/dashboard.html missing from installed wheel at ${pkg_dir}"
+            exit 1
+          fi
+          echo "templates/dashboard.html found at ${pkg_dir}/templates/dashboard.html"
+
+      # Run the dashboard command end-to-end against a tiny fixture.
+      - name: Run dashboard command against fixture data
+        run: |
+          .smoke-venv/bin/python -m claude_prospector dashboard \
+            --data-dir tests/fixtures/session_summaries/dashboard_baseline_input \
+            --no-open \
+            --output /tmp/smoke-dashboard.html
+          test -s /tmp/smoke-dashboard.html
+          echo "Smoke test passed — dashboard HTML written and non-empty."
+
+  # ---------------------------------------------------------------------------
   # Publish to PyPI (stable tags only — no -rc / -alpha / -beta)
   # ---------------------------------------------------------------------------
   publish-pypi:
     name: Publish to PyPI
-    needs: build
+    needs: [build, wheel-smoke]
     runs-on: ubuntu-latest
     if: ${{ !contains(github.ref, '-rc') && !contains(github.ref, '-alpha') && !contains(github.ref, '-beta') }}
     environment:
@@ -62,7 +115,7 @@ jobs:
   # ---------------------------------------------------------------------------
   publish-testpypi:
     name: Publish to TestPyPI
-    needs: build
+    needs: [build, wheel-smoke]
     runs-on: ubuntu-latest
     if: contains(github.ref, '-rc') || contains(github.ref, '-alpha') || contains(github.ref, '-beta')
     environment:
